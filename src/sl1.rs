@@ -1,6 +1,6 @@
-use std::{io::{BufReader, Read}, fs::File};
+use std::{io::Read, fs::File};
 
-use png::Decoder;
+use png::{Decoder};
 use itertools::Itertools;
 use config::{Config, ConfigError, File as ConfigFile, FileFormat};
 use serde::{Deserialize};
@@ -59,6 +59,7 @@ pub struct Frame {
     pub file_name: String,
     pub buffer: Vec<u8>,
     pub exposure_time: f32,
+    pub bit_depth: u8,
 }
 
 impl Frame {
@@ -67,14 +68,20 @@ impl Frame {
 
         let file_path = file.name().to_string();
 
-        let mut png_reader = Decoder::new(file).read_info().unwrap();
+        let mut decoder = Decoder::new(file);
+        decoder.set_transformations(png::Transformations::EXPAND);
+
+        let mut png_reader = decoder.read_info().unwrap();
 
         let mut f = Frame { 
             file_name: file_path.clone(),
             buffer: vec![0;png_reader.output_buffer_size()], 
             exposure_time: exposure_time, 
+            bit_depth: png_reader.info().bit_depth as u8,
         };
-        
+
+        println!("png info: {:?}", png_reader.info());
+
         if png_reader.next_frame(f.buffer.as_mut()).is_err() {
             panic!("Encountered an error reading {} from archive", file_path);
         }
@@ -109,8 +116,6 @@ impl<'a> Sl1 {
         archive.by_name(CONFIG_FILE).unwrap().read_to_string(&mut config_contents);
 
         let config = PrintConfig::from_string(config_contents).unwrap();
-
-        println!("printconfig: {:?}", config);
 
         Sl1 {
             name: file_name,

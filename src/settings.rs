@@ -6,6 +6,8 @@ pub struct Printer {
     pub serial: String,
     pub baud: u32,
     pub frame_buffer: String,
+    pub fb_bit_depth: u8,
+    pub fb_chunk_size: u8,
 }
 
 impl Default for Printer {
@@ -14,6 +16,8 @@ impl Default for Printer {
             serial: Default::default(),
             baud: 250000,
             frame_buffer: Default::default(),
+            fb_bit_depth: 5,
+            fb_chunk_size: 16,
         }
     }
 }

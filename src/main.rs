@@ -1,12 +1,14 @@
 //#[macro_use] extern crate rocket;
 use clap::Parser;
 use settings::Settings;
+use display::PrintDisplay;
 use framebuffer::Framebuffer;
 use std::{thread, time::Duration};
 
 //mod api;
 mod settings;
 mod sl1;
+mod display;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -25,6 +27,13 @@ fn main() {
     let args = Args::parse();
 
     let settings: Settings = settings::Settings::load(args.config).unwrap();
+
+    let mut display: PrintDisplay = PrintDisplay{
+        frame_buffer: Framebuffer::new(settings.printer.frame_buffer.to_owned()).unwrap(),
+        //frame_buffer: None,
+        bit_depth: settings.printer.fb_bit_depth,
+        chunk_size: settings.printer.fb_chunk_size,
+    };
     
     println!("settings: {:?}", settings);
     if args.file.is_some() {
@@ -34,12 +43,11 @@ fn main() {
 
         let mut file = sl1::Sl1::from_file(print_file);
 
-        let mut framebuffer = Framebuffer::new(settings.printer.frame_buffer).unwrap();
-
         file.iter().for_each(|frame| {
-            println!("file: {}, exposure: {}", frame.file_name, frame.exposure_time);
-            framebuffer.write_frame(&frame.buffer);
-            thread::sleep(Duration::from_secs_f32(frame.exposure_time));
+            let exposure_time = frame.exposure_time;
+            println!("file: {}, exposure: {}", frame.file_name, exposure_time);
+            display.display_frame(frame);
+            thread::sleep(Duration::from_secs_f32(exposure_time));
         });
 
     }

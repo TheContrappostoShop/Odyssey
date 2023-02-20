@@ -2,10 +2,10 @@ use config::{Config, ConfigError, File, FileFormat};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Printer {
-    serial: String,
-    baud: u32,
-    frame_buffer: String,
+pub struct Printer {
+    pub serial: String,
+    pub baud: u32,
+    pub frame_buffer: String,
 }
 
 impl Default for Printer {
@@ -19,16 +19,16 @@ impl Default for Printer {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Gcode {
-    boot: String,
-    shutdown: String,
-    home_command: String,
-    move_command: String,
-    print_start: String,
-    print_end: String,
-    cure_start: String,
-    cure_end: String,
-    sync_message: String,
+pub struct Gcode {
+    pub boot: String,
+    pub shutdown: String,
+    pub home_command: String,
+    pub move_command: String,
+    pub print_start: String,
+    pub print_end: String,
+    pub cure_start: String,
+    pub cure_end: String,
+    pub sync_message: String,
 }
 
 impl Default for Gcode {
@@ -49,8 +49,8 @@ impl Default for Gcode {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Settings {
-    printer: Printer,
-    gcode: Gcode,
+    pub printer: Printer,
+    pub gcode: Gcode,
 }
 
 impl Settings {

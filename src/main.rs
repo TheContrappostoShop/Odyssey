@@ -2,6 +2,7 @@
 use clap::Parser;
 use settings::Settings;
 use framebuffer::Framebuffer;
+use std::{thread, time::Duration};
 
 //mod api;
 mod settings;
@@ -33,8 +34,12 @@ fn main() {
 
         let mut file = sl1::Sl1::from_file(print_file);
 
+        let mut framebuffer = Framebuffer::new(settings.printer.frame_buffer).unwrap();
+
         file.iter().for_each(|frame| {
             println!("file: {}, exposure: {}", frame.file_name, frame.exposure_time);
+            framebuffer.write_frame(&frame.buffer);
+            thread::sleep(Duration::from_secs_f32(frame.exposure_time));
         });
 
     }

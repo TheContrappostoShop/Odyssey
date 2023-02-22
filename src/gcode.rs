@@ -19,7 +19,7 @@ pub struct Gcode {
 
 
 impl Gcode {
-    pub fn new(config: Configuration) -> Gcode {
+    pub fn new(config: Configuration, serial: SerialStream) -> Gcode {
         return Gcode { 
             config: config.gcode, 
             state: PhysicalState { 
@@ -27,7 +27,7 @@ impl Gcode {
                 curing: false 
             }, 
             gcode_substitutions: HashMap::new(),
-            serial_port: tokio_serial::new(config.printer.serial.clone(), config.printer.baud.clone()).open_native_async().unwrap(),
+            serial_port: serial,
         }
     }
 

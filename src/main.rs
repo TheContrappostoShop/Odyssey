@@ -5,6 +5,7 @@ use configuration::Configuration;
 use display::PrintDisplay;
 use framebuffer::Framebuffer;
 use tokio::runtime::Builder;
+use tokio_serial::SerialStream;
 use std::{thread, time::Duration};
 
 use crate::{printer::{Printer, HardwareControl}, gcode::Gcode};
@@ -34,7 +35,14 @@ fn main() {
 
     let configuration: Configuration = configuration::Configuration::load(args.config).unwrap();
 
-    let mut gcode = Gcode::new(configuration.clone());
+    let mut serial = SerialStream::open(
+        &tokio_serial::new(
+            configuration.printer.serial.clone(), configuration.printer.baud.clone()
+        )
+    ).unwrap();
+
+    let mut gcode = Gcode::new(configuration.clone(), serial);
+
 
     gcode.add_gcode_substitution("{max_z}".to_string(), configuration.printer.max_z.to_string());
 

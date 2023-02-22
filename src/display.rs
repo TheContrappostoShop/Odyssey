@@ -1,6 +1,33 @@
 use framebuffer::Framebuffer;
+use png::{Decoder};
 
-use crate::sl1::Frame;
+#[derive(Clone)]
+pub struct Frame {
+    pub file_name: String,
+    pub buffer: Vec<u8>,
+    pub exposure_time: f32,
+    pub bit_depth: u8,
+}
+
+impl Frame {
+    pub fn from_vec(name: String, exposure_time: f32, mut data: Vec<u8>) -> Frame {
+        let mut decoder = Decoder::new(data.as_slice());
+
+        let mut png_reader = decoder.read_info().unwrap();
+
+        let mut f = Frame {
+            file_name: name.clone(),
+            buffer: vec![0;png_reader.output_buffer_size()],
+            exposure_time: exposure_time,
+            bit_depth: png_reader.info().bit_depth as u8,
+        };
+
+        if png_reader.next_frame(f.buffer.as_mut()).is_err() {
+            panic!("Encountered an error reading {} to png", name);
+        }
+        return f;
+    }
+}
 
 pub struct PrintDisplay {
     pub frame_buffer: Framebuffer,
@@ -17,40 +44,20 @@ impl PrintDisplay {
 
         let mut new_buffer: Vec<u8> = Vec::new();
 
-
         frame.buffer.chunks_exact(pixels_per_chunk.into())
             .for_each(|pixel_chunk| {
-                let mut has_data = false;
-                if pixel_chunk[0]>0 || pixel_chunk[1]>0 || pixel_chunk[2]>0 {
-                    has_data = true;
-                    println!("New Chunk with data:");
-                }
+
                 // raw binary chunk of pixels, to be broken into bytes and repacked in the Vector later
                 let mut raw_chunk = 0b00000000000000000000000000000000;
                 for i in 0..pixels_per_chunk {
                     // Truncate the pixel data to the display's bit depth, then shift it into place in the raw chunk
                     let shifted_pixel: u64 = ((pixel_chunk[i as usize] as u64) >> depth_difference)<< (i*self.bit_depth+chunk_remainder);
-
-                    if has_data {
-                        println!("pixel: {:016b}", pixel_chunk[i as usize]);
-                        println!("shifted pixel: {:016b}", shifted_pixel);
-                    }
-
                     raw_chunk = raw_chunk | shifted_pixel;
-                }
-
-                if has_data {
-                    println!("raw chunk: {:016b}", raw_chunk);
                 }
 
                 for i in 0..(self.chunk_size/8) {
                     // pull the raw chunk back apart into bytes, for push into the new buffer
                     let byte = ((raw_chunk >> (8*i)) & 0xFF) as u8;
-
-                    if has_data {
-                        println!("byte: {:08b}", byte);
-                    }
-
                     new_buffer.push(byte);
                 }
         });

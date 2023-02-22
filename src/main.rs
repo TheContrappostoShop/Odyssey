@@ -1,14 +1,20 @@
 //#[macro_use] extern crate rocket;
 use clap::Parser;
-use settings::Settings;
+use configuration::Configuration;
+
 use display::PrintDisplay;
 use framebuffer::Framebuffer;
+use tokio::runtime::Builder;
 use std::{thread, time::Duration};
 
+use crate::{printer::{Printer, HardwareControl}, gcode::Gcode};
+
 //mod api;
-mod settings;
+mod configuration;
 mod sl1;
 mod display;
+mod printer;
+mod gcode;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -26,29 +32,48 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let settings: Settings = settings::Settings::load(args.config).unwrap();
+    let configuration: Configuration = configuration::Configuration::load(args.config).unwrap();
+
+    let mut gcode = Gcode::new(configuration.clone());
+
+    gcode.add_gcode_substitution("{max_z}".to_string(), configuration.printer.max_z.to_string());
+
+    gcode.add_gcode_substitution("{z_lift}".to_string(), configuration.printer.z_lift.to_string());
+
+    println!("settings: {:?}", configuration);
 
     let mut display: PrintDisplay = PrintDisplay{
-        frame_buffer: Framebuffer::new(settings.printer.frame_buffer.to_owned()).unwrap(),
+        frame_buffer: Framebuffer::new(configuration.printer.frame_buffer.to_owned()).unwrap(),
         //frame_buffer: None,
-        bit_depth: settings.printer.fb_bit_depth,
-        chunk_size: settings.printer.fb_chunk_size,
+        bit_depth: configuration.printer.fb_bit_depth,
+        chunk_size: configuration.printer.fb_chunk_size,
+    };
+
+    let mut printer: Printer<Gcode> = Printer{
+        config: configuration.printer,
+        display: display,
+        hardware_controller: gcode,
     };
     
-    println!("settings: {:?}", settings);
     if args.file.is_some() {
         let print_file = args.file.unwrap();
 
-        println!("file: {}", print_file);
+        println!("Starting Odyssey in CLI mode, printing {}", print_file);
 
-        let mut file = sl1::Sl1::from_file(print_file);
+        // build runtime
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("odyssey-worker")
+            .thread_stack_size(3 * 1024 * 1024)
+            .enable_time()
+            .build()
+            .unwrap();
 
-        file.iter().for_each(|frame| {
-            let exposure_time = frame.exposure_time;
-            println!("file: {}, exposure: {}", frame.file_name, exposure_time);
-            display.display_frame(frame);
-            thread::sleep(Duration::from_secs_f32(exposure_time));
-        });
+
+
+        //let mut file = sl1::Sl1::from_file(&print_file);
+
+        runtime.block_on(printer.print(print_file));
 
     }
 }

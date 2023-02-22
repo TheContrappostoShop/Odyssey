@@ -15,3 +15,8 @@ zip = "0.6.4"
 itertools = "0.10.5"
 png = "0.17.7"
 framebuffer = "0.3.1"
+tokio = { version = "1", features = ["full"] }
+futures = "0.3.26"
+async-trait = "0.1.64"
+regex = "1"
+tokio-serial = "5.4.1"

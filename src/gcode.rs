@@ -1,11 +1,11 @@
 use core::panic;
-use std::io::{self, Write, Read};
+use std::io::{self, Write, Read, BufReader, BufRead};
 use std::thread::spawn;
 use std::{collections::HashMap, str};
 
 use regex::Regex;
 use async_trait::async_trait;
-use serialport::{TTYPort, SerialPortBuilder};
+use serialport::{TTYPort, SerialPortBuilder, SerialPort};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 
 use crate::configuration::{GcodeConfig, Configuration};
@@ -42,11 +42,10 @@ impl Gcode {
 
     pub async fn run_listener(mut port: TTYPort, sender: Sender<String>) {
         {
-            let mut read_bytes: Vec<u8> = vec![0; 512];
+            let mut buf_reader = BufReader::new(port);
             loop {
-                read_bytes.clear();
-
-                match port.read(&mut read_bytes) {
+                let mut read_string = String::new();
+                match buf_reader.read_line(&mut read_string) {
                     Err(e) => match e.kind() {
                         io::ErrorKind::TimedOut => {
                             continue;
@@ -55,9 +54,8 @@ impl Gcode {
                     },
                     Ok(n) => {
                         if n>0 {
-                            let read_string = str::from_utf8(read_bytes.as_slice()).unwrap();
                             println!("Read {} bytes from serial: {}", n, read_string);
-                            sender.send(read_string.to_string()).await.expect("Unable to send message to channel");
+                            sender.send(read_string).await.expect("Unable to send message to channel");
                         }
                     },
                 };

@@ -5,7 +5,6 @@ use configuration::Configuration;
 use display::PrintDisplay;
 use framebuffer::Framebuffer;
 use tokio::runtime::Builder;
-use tokio_serial::SerialStream;
 use std::{thread, time::Duration};
 
 use crate::{printer::{Printer, HardwareControl}, gcode::Gcode};
@@ -35,7 +34,7 @@ fn main() {
 
     let configuration: Configuration = configuration::Configuration::load(args.config).unwrap();
 
-    let mut serial = tokio_serial::new(
+    let mut serial = serialport::new(
         configuration.printer.serial.clone(), configuration.printer.baud.clone()
     );
 

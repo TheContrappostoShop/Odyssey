@@ -1,10 +1,12 @@
 use core::panic;
 use std::io::{self, Write};
+use std::thread::spawn;
 use std::{collections::HashMap, str};
 
 use regex::Regex;
 use async_trait::async_trait;
 use serialport::{SerialPort, SerialPortBuilder};
+use tokio::sync::mpsc::{self, Sender, Receiver};
 
 use crate::configuration::{GcodeConfig, Configuration};
 use crate::printer::{HardwareControl, PhysicalState};
@@ -16,12 +18,14 @@ pub struct Gcode {
     pub state: PhysicalState,
     pub gcode_substitutions: HashMap<String, String>,
     pub serial_port: Box<dyn SerialPort>,
+    pub transceiver: (Sender<String>, Receiver<String>),
 }
 
 
 
 impl Gcode {
     pub fn new(config: Configuration, serial_builder: SerialPortBuilder) -> Gcode {
+        let transceiver = mpsc::channel(100);
         return Gcode { 
             config: config.gcode, 
             state: PhysicalState { 
@@ -29,7 +33,33 @@ impl Gcode {
                 curing: false 
             }, 
             gcode_substitutions: HashMap::new(),
-            serial_port: serial_builder.open().expect("Unable to open serial connection")
+            serial_port: serial_builder.open().expect("Unable to open serial connection"),
+            transceiver: transceiver,
+        }
+    }
+
+    pub async fn run_listener(mut port: Box<dyn SerialPort>, sender: Sender<String>) {
+        {
+            let mut read_bytes: Vec<u8> = vec![0; 512];
+            loop {
+                read_bytes.clear();
+
+                match port.read(&mut read_bytes) {
+                    Err(e) => match e.kind() {
+                        io::ErrorKind::TimedOut => {
+                            continue;
+                        },
+                        other_error => panic!("Error reading from serial port: {:?}", other_error),
+                    },
+                    Ok(n) => {
+                        if n>0 {
+                            let read_string = str::from_utf8(read_bytes.as_slice()).unwrap();
+                            println!("Read {} bytes from serial: {}", n, read_string);
+                            sender.send(read_string.to_string()).await.expect("Unable to send message to channel");
+                        }
+                    },
+                };
+            }
         }
     }
 
@@ -54,29 +84,21 @@ impl Gcode {
     }
 
     async fn send_gcode(&mut self, code: String) {
-        let parsed_code = self.parse_gcode(code.clone());
+        let parsed_code = self.parse_gcode(code.clone())+"\r\n";
         println!("Executing gcode: {}", parsed_code);
         
-        self.serial_port.write_all(parsed_code.as_bytes());
-        self.serial_port.flush();
+        let n = self.serial_port.write(parsed_code.as_bytes()).unwrap();
+        self.serial_port.flush().expect("Unable to flush serial connection");
+
+        println!("Wrote {} bytes", n);
     }
 
     async fn await_response(&mut self, response: String) {
-        let mut read_bytes: Vec<u8> = vec![0; 512];
+        let mut msg = String::new();
         println!("Expecting response: {}", response);
 
-        while !str::from_utf8(read_bytes.as_slice()).unwrap().contains(response.as_str()) {
-            read_bytes.clear();
-
-            match self.serial_port.read(&mut read_bytes) {
-                Err(e) => match e.kind() {
-                    io::ErrorKind::TimedOut => {
-                        continue;
-                    },
-                    other_error => panic!("Error reading from serial port: {:?}", other_error),
-                },
-                Ok(n) => println!("Read {} bytes from serial: {}", n, str::from_utf8(read_bytes.as_slice()).unwrap()),
-            };
+        while !msg.contains(response.as_str()) {
+            msg = self.transceiver.1.recv().await.expect("Unable to receive message from channel");
         }
         
     }
@@ -131,6 +153,12 @@ impl HardwareControl for Gcode {
     }
     
     async fn start_print(&mut self) -> PhysicalState {
+        // Run the serial port listener task
+        tokio::spawn(Gcode::run_listener(
+            self.serial_port.as_mut().try_clone().expect("Unable to clone serial connection"),
+            self.transceiver.0.clone()
+        ));
+
         self.send_gcode(self.config.print_start.clone()).await;
 
         return self.state;

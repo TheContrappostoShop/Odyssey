@@ -1,12 +1,12 @@
 use core::panic;
-use std::io::{self, Write, Read, BufReader, BufRead};
-use std::thread::spawn;
-use std::{collections::HashMap, str};
+use std::io::{self, Write, BufReader, BufRead};
+use std::collections::HashMap;
 
 use regex::Regex;
 use async_trait::async_trait;
-use serialport::{TTYPort, SerialPortBuilder, SerialPort};
+use serialport::{TTYPort, SerialPortBuilder};
 use tokio::sync::mpsc::{self, Sender, Receiver};
+use tokio::time::{interval, Duration};
 
 use crate::configuration::{GcodeConfig, Configuration};
 use crate::printer::{HardwareControl, PhysicalState};
@@ -27,7 +27,7 @@ impl Gcode {
     pub fn new(config: Configuration, serial_builder: SerialPortBuilder) -> Gcode {
         let transceiver = mpsc::channel(100);
         let mut port = serial_builder.open_native().expect("Unable to open serial connection");
-        port.set_exclusive(false);
+        port.set_exclusive(false).expect("Unable to set serial port exclusivity(false)");
         return Gcode { 
             config: config.gcode, 
             state: PhysicalState { 
@@ -40,10 +40,12 @@ impl Gcode {
         }
     }
 
-    pub async fn run_listener(mut port: TTYPort, sender: Sender<String>) {
+    pub async fn run_listener(port: TTYPort, sender: Sender<String>) {
         {
             let mut buf_reader = BufReader::new(port);
+            let mut interval = interval(Duration::from_millis(100));
             loop {
+                interval.tick().await;
                 let mut read_string = String::new();
                 match buf_reader.read_line(&mut read_string) {
                     Err(e) => match e.kind() {
@@ -100,6 +102,7 @@ impl Gcode {
         while !msg.contains(response.as_str()) {
             msg = self.transceiver.1.recv().await.expect("Unable to receive message from channel");
         }
+        println!("Expected response received");
         
     }
 

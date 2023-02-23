@@ -10,10 +10,10 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn from_vec(name: String, exposure_time: f32, mut data: Vec<u8>) -> Frame {
-        let mut decoder = Decoder::new(data.as_slice());
+    pub fn from_vec(name: String, exposure_time: f32, data: Vec<u8>) -> Frame {
+        let decoder = Decoder::new(data.as_slice());
 
-        let mut png_reader = decoder.read_info().unwrap();
+        let mut png_reader = decoder.read_info().expect("Unable to read PNG metadata");
 
         let mut f = Frame {
             file_name: name.clone(),
@@ -22,9 +22,8 @@ impl Frame {
             bit_depth: png_reader.info().bit_depth as u8,
         };
 
-        if png_reader.next_frame(f.buffer.as_mut()).is_err() {
-            panic!("Encountered an error reading {} to png", name);
-        }
+        png_reader.next_frame(f.buffer.as_mut()).expect("Error reading PNG");
+
         return f;
     }
 }

@@ -14,50 +14,52 @@ pub struct Printer<T: HardwareControl> {
 
 impl<T: HardwareControl> Printer<T> {
     pub async fn print<'a>(&mut self, file_name: String) {
-        {
-            let mut file = Sl1::from_file(file_name);
-            let mut index = 0;
+        let mut file = Sl1::from_file(file_name);
+        let mut index = 0;
 
-            let layer_height = file.get_layer_height();
-            let z_lift = self.config.z_lift;
+        let layer_height = file.get_layer_height();
+        let z_lift = self.config.z_lift;
 
-            self.hardware_controller.start_print().await;
+        self.hardware_controller.start_print().await;
 
-            // Fetch and generate the first frame
-            let fetch_layer = file.get_layer_data(index);
+        // Fetch and generate the first frame
+        let fetch_layer = file.get_layer_data(index);
 
-            let mut optional_frame = Frame::from_layer(fetch_layer.await).await;
+        let mut optional_frame = Frame::from_layer(fetch_layer.await).await;
 
-            while optional_frame.is_some() {
-                let layer_z = ((index+1) as f32)*layer_height;
+        while optional_frame.is_some() {
+            let layer_z = ((index+1) as f32)*layer_height;
 
-                index+=1;
+            index+=1;
 
-                let mut cur_frame = optional_frame.unwrap();
+            // Known to exist courtesy of loop condition
+            let cur_frame = optional_frame.unwrap();
 
-                let exposure_time = cur_frame.exposure_time;
+            let exposure_time = cur_frame.exposure_time;
 
-                // Start a task to fetch and generate the next frame while we're exposing the current one
-                let fetch_next_layer = file.get_layer_data(index);
-                let gen_next_frame = tokio::spawn(Frame::from_layer(fetch_next_layer.await));
-                
-                self.hardware_controller.move_z(layer_z+z_lift).await;
-                self.hardware_controller.move_z(layer_z).await;
+            // Start a task to fetch and generate the next frame while we're exposing the current one
+            let fetch_next_layer = file.get_layer_data(index);
+            let gen_next_frame = tokio::spawn(Frame::from_layer(fetch_next_layer.await));
 
-                self.display.display_frame(cur_frame);
+            // Move the plate up first, then down into position
+            self.hardware_controller.move_z(layer_z+z_lift).await;
+            self.hardware_controller.move_z(layer_z).await;
 
-                self.hardware_controller.start_curing().await;
+            // Display the current frame to the LCD
+            self.display.display_frame(cur_frame);
 
-                println!("<Sleep for {}>", exposure_time);
-                sleep(Duration::from_secs_f32(exposure_time)).await;
+            // Activate the UV array for the prescribed length of time
+            println!("<Cure for {}>", exposure_time);
+            self.hardware_controller.start_curing().await;
+            sleep(Duration::from_secs_f32(exposure_time)).await;
+            self.hardware_controller.stop_curing().await;
 
-                self.hardware_controller.stop_curing().await;
-
-                optional_frame = gen_next_frame.await.unwrap();
-            }
-
-            self.hardware_controller.end_print().await;
+            // Finish fetching the next frame
+            optional_frame = gen_next_frame.await.expect("Layer generation task failed");
         }
+
+        self.hardware_controller.end_print().await;
+        println!("Print complete.");
     }
 }
 

@@ -5,9 +5,8 @@ use configuration::Configuration;
 use display::PrintDisplay;
 use framebuffer::Framebuffer;
 use tokio::runtime::Builder;
-use std::{thread, time::Duration};
 
-use crate::{printer::{Printer, HardwareControl}, gcode::Gcode};
+use crate::{printer::Printer, gcode::Gcode};
 
 //mod api;
 mod configuration;
@@ -34,7 +33,7 @@ fn main() {
 
     let configuration: Configuration = configuration::Configuration::load(args.config).unwrap();
 
-    let mut serial = serialport::new(
+    let serial = serialport::new(
         configuration.printer.serial.clone(), configuration.printer.baud.clone()
     );
 
@@ -45,11 +44,8 @@ fn main() {
 
     gcode.add_gcode_substitution("{z_lift}".to_string(), configuration.printer.z_lift.to_string());
 
-    println!("settings: {:?}", configuration);
-
-    let mut display: PrintDisplay = PrintDisplay{
+    let display: PrintDisplay = PrintDisplay{
         frame_buffer: Framebuffer::new(configuration.printer.frame_buffer.to_owned()).unwrap(),
-        //frame_buffer: None,
         bit_depth: configuration.printer.fb_bit_depth,
         chunk_size: configuration.printer.fb_chunk_size,
     };
@@ -74,10 +70,6 @@ fn main() {
             .enable_io()
             .build()
             .unwrap();
-
-
-
-        //let mut file = sl1::Sl1::from_file(&print_file);
 
         runtime.block_on(printer.print(print_file));
 

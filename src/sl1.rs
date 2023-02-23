@@ -10,6 +10,7 @@ const CONFIG_FILE: &str = "config.ini";
 /// PrintConfig object encompassing the fields stored in `config.ini` inside a `.sl1` file
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct PrintConfig {
     action: String,
     exp_time: f32,
@@ -61,7 +62,6 @@ pub struct Layer {
 
 /// The sliced .sl1-format model, with the internal config and the full archive contents
 pub struct Sl1 {
-    name: String,
     config: PrintConfig,
     archive: ZipArchive<File>,
     frame_list: Vec<String>,
@@ -75,12 +75,11 @@ impl<'a> Sl1 {
 
         let mut config_contents = String::new();
 
-        archive.by_name(CONFIG_FILE).unwrap().read_to_string(&mut config_contents);
+        archive.by_name(CONFIG_FILE).unwrap().read_to_string(&mut config_contents).expect("Unable to read print config.ini");
 
         let config = PrintConfig::from_string(config_contents).unwrap();
 
         Sl1 {
-            name: file_name,
             frame_list: archive.file_names()
                 .map(|name| String::from(name))
                 .filter(|name| name.ends_with(".png") && !name.contains('/'))
@@ -99,7 +98,8 @@ impl<'a> Sl1 {
             if frame_file.is_ok() {
                 let mut frame_file = frame_file.unwrap();
                 let mut ret: Vec<u8> = Vec::new();
-                frame_file.read_to_end(&mut ret);
+
+                frame_file.read_to_end(&mut ret).expect("Error reading file from archive");
 
                 return Some(Layer {
                     file_name: self.frame_list[index].clone(),
@@ -111,6 +111,8 @@ impl<'a> Sl1 {
         return None;
     }
 
+    // Will be used to report status in the future
+    #[allow(dead_code)]
     pub fn get_frame_count(& self) -> usize {
         return self.frame_list.len();
     }

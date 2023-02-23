@@ -1,8 +1,10 @@
+use core::panic;
+use std::io;
 use std::{collections::HashMap, str};
 
 use regex::Regex;
 use async_trait::async_trait;
-use tokio_serial::{SerialStream, SerialPortBuilderExt, SerialPortBuilder};
+use tokio_serial::{SerialStream, SerialPortBuilder};
 
 use crate::configuration::{GcodeConfig, Configuration};
 use crate::printer::{HardwareControl, PhysicalState};
@@ -37,8 +39,13 @@ impl Gcode {
         if self.serial_port.is_some() {
             return self.serial_port.as_mut().unwrap();
         }
-        self.serial_port = Some(SerialStream::open(&self.serial_builder).unwrap());
-        return self.serial_port.as_mut().expect("Serial Connection Failed");
+        self.serial_port = Some(SerialStream::open(&self.serial_builder).expect("Serial Connection Failed"));
+
+        let port = self.serial_port.as_mut().unwrap();
+
+        port.set_exclusive(false).expect("Error setting exclusivity(false) for serial connection");
+        
+        return self.serial_port.as_mut().unwrap();
     }
 
     pub fn add_gcode_substitution(&mut self, key: String, value: String) {
@@ -62,22 +69,40 @@ impl Gcode {
     }
 
     async fn send_gcode(&mut self, code: String) {
-        //todo!()
         let parsed_code = self.parse_gcode(code.clone());
         println!("Executing gcode: {}", parsed_code);
 
-        self.serial_connection().writable().await.expect("Unable to write to serial port");
-        self.serial_connection().try_write(parsed_code.as_bytes()).expect("Unable to write to serial port");
+        // Retry sending if we hit the writable() false positive
+        for _ in 0..3 {
+            self.serial_connection().writable().await.expect("Unable to write to serial port");
+            match self.serial_connection().try_write(code.as_bytes()) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::WouldBlock => {
+                        continue;
+                    },
+                    other_error => panic!("Error writing to serial port: {:?}", other_error),
+                },
+                Ok(_) => return,
+            };
+        }
     }
 
     async fn await_response(&mut self, response: String) {
-        //todo!()
-        let mut read_bytes: Vec<u8> = vec![0; 64];
+        let mut read_bytes: Vec<u8> = vec![0; 512];
         println!("Expecting response: {}", response);
 
         while !str::from_utf8(read_bytes.as_slice()).unwrap().contains(response.as_str()) {
             self.serial_connection().readable().await.expect("Unable to read from serial port");
-            self.serial_connection().try_read(read_bytes.as_mut_slice()).expect("Unable to read from serial port");
+
+            match self.serial_connection().try_read(read_bytes.as_mut_slice()) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::WouldBlock => {
+                        continue;
+                    },
+                    other_error => panic!("Error reading from serial port: {:?}", other_error),
+                },
+                Ok(_) => println!("Read from serial: {}", str::from_utf8(read_bytes.as_slice()).unwrap()),
+            };
         }
         
     }

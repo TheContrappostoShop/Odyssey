@@ -72,6 +72,7 @@ fn main() {
             .thread_name("odyssey-worker")
             .thread_stack_size(3 * 1024 * 1024)
             .enable_time()
+            .enable_io()
             .build()
             .unwrap();
 

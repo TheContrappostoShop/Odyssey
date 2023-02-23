@@ -1,3 +1,4 @@
 printer:
-  serial: ~/printer_data/comms/klippy.serial
+  serial: /home/pi/printer_data/comms/klippy.serial
   frame_buffer: /dev/fb0
+  

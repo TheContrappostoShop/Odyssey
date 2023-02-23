@@ -2,7 +2,7 @@ use std::{collections::HashMap, str};
 
 use regex::Regex;
 use async_trait::async_trait;
-use tokio_serial::{SerialStream, SerialPortBuilderExt};
+use tokio_serial::{SerialStream, SerialPortBuilderExt, SerialPortBuilder};
 
 use crate::configuration::{GcodeConfig, Configuration};
 use crate::printer::{HardwareControl, PhysicalState};
@@ -13,13 +13,14 @@ pub struct Gcode {
     pub config: GcodeConfig,
     pub state: PhysicalState,
     pub gcode_substitutions: HashMap<String, String>,
-    pub serial_port: SerialStream
+    pub serial_builder: SerialPortBuilder,
+    pub serial_port: Option<SerialStream>,
 }
 
 
 
 impl Gcode {
-    pub fn new(config: Configuration, serial: SerialStream) -> Gcode {
+    pub fn new(config: Configuration, serial_builder: SerialPortBuilder) -> Gcode {
         return Gcode { 
             config: config.gcode, 
             state: PhysicalState { 
@@ -27,8 +28,17 @@ impl Gcode {
                 curing: false 
             }, 
             gcode_substitutions: HashMap::new(),
-            serial_port: serial,
+            serial_builder: serial_builder,
+            serial_port: None
         }
+    }
+
+    pub fn serial_connection(&mut self) -> &mut SerialStream {
+        if self.serial_port.is_some() {
+            return self.serial_port.as_mut().unwrap();
+        }
+        self.serial_port = Some(SerialStream::open(&self.serial_builder).unwrap());
+        return self.serial_port.as_mut().expect("Serial Connection Failed");
     }
 
     pub fn add_gcode_substitution(&mut self, key: String, value: String) {
@@ -55,8 +65,9 @@ impl Gcode {
         //todo!()
         let parsed_code = self.parse_gcode(code.clone());
         println!("Executing gcode: {}", parsed_code);
-        self.serial_port.writable().await.expect("Unable to write to serial port");
-        self.serial_port.try_write(parsed_code.as_bytes()).expect("Unable to write to serial port");
+
+        self.serial_connection().writable().await.expect("Unable to write to serial port");
+        self.serial_connection().try_write(parsed_code.as_bytes()).expect("Unable to write to serial port");
     }
 
     async fn await_response(&mut self, response: String) {
@@ -65,8 +76,8 @@ impl Gcode {
         println!("Expecting response: {}", response);
 
         while !str::from_utf8(read_bytes.as_slice()).unwrap().contains(response.as_str()) {
-            self.serial_port.readable().await.expect("Unable to read from serial port");
-            self.serial_port.try_read(read_bytes.as_mut_slice()).expect("Unable to read from serial port");
+            self.serial_connection().readable().await.expect("Unable to read from serial port");
+            self.serial_connection().try_read(read_bytes.as_mut_slice()).expect("Unable to read from serial port");
         }
         
     }

@@ -35,11 +35,9 @@ fn main() {
 
     let configuration: Configuration = configuration::Configuration::load(args.config).unwrap();
 
-    let mut serial = SerialStream::open(
-        &tokio_serial::new(
-            configuration.printer.serial.clone(), configuration.printer.baud.clone()
-        )
-    ).unwrap();
+    let mut serial = tokio_serial::new(
+        configuration.printer.serial.clone(), configuration.printer.baud.clone()
+    );
 
     let mut gcode = Gcode::new(configuration.clone(), serial);
 

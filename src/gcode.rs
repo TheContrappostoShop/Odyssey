@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use regex::Regex;
 use async_trait::async_trait;
-use serialport::{TTYPort, SerialPortBuilder};
+use serialport::{TTYPort, SerialPortBuilder, SerialPort, ClearBuffer};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 use tokio::time::{interval, Duration};
 
@@ -27,7 +27,10 @@ impl Gcode {
     pub fn new(config: Configuration, serial_builder: SerialPortBuilder) -> Gcode {
         let transceiver = mpsc::channel(100);
         let mut port = serial_builder.open_native().expect("Unable to open serial connection");
+
         port.set_exclusive(false).expect("Unable to set serial port exclusivity(false)");
+        port.clear(ClearBuffer::All).expect("Unable to clear serialport buffers");
+
         return Gcode { 
             config: config.gcode, 
             state: PhysicalState { 
@@ -41,27 +44,26 @@ impl Gcode {
     }
 
     pub async fn run_listener(port: TTYPort, sender: Sender<String>) {
-        {
-            let mut buf_reader = BufReader::new(port);
-            let mut interval = interval(Duration::from_millis(100));
-            loop {
-                interval.tick().await;
-                let mut read_string = String::new();
-                match buf_reader.read_line(&mut read_string) {
-                    Err(e) => match e.kind() {
-                        io::ErrorKind::TimedOut => {
-                            continue;
-                        },
-                        other_error => panic!("Error reading from serial port: {:?}", other_error),
+        let mut buf_reader = BufReader::new(port);
+        let mut interval = interval(Duration::from_millis(100));
+
+        loop {
+            interval.tick().await;
+            let mut read_string = String::new();
+            match buf_reader.read_line(&mut read_string) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::TimedOut => {
+                        continue;
                     },
-                    Ok(n) => {
-                        if n>0 {
-                            println!("Read {} bytes from serial: {}", n, read_string);
-                            sender.send(read_string).await.expect("Unable to send message to channel");
-                        }
-                    },
-                };
-            }
+                    other_error => panic!("Error reading from serial port: {:?}", other_error),
+                },
+                Ok(n) => {
+                    if n>0 {
+                        println!("Read {} bytes from serial: {}", n, read_string.trim_end());
+                        sender.send(read_string).await.expect("Unable to send message to channel");
+                    }
+                },
+            };
         }
     }
 
@@ -87,7 +89,7 @@ impl Gcode {
 
     async fn send_gcode(&mut self, code: String) {
         let parsed_code = self.parse_gcode(code.clone())+"\r\n";
-        println!("Executing gcode: {}", parsed_code);
+        println!("Executing gcode: {}", parsed_code.trim_end());
         
         let n = self.serial_port.write(parsed_code.as_bytes()).unwrap();
         self.serial_port.flush().expect("Unable to flush serial connection");

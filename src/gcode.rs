@@ -1,5 +1,5 @@
 use core::panic;
-use std::io;
+use std::io::{self, Write};
 use std::{collections::HashMap, str};
 
 use regex::Regex;
@@ -75,6 +75,7 @@ impl Gcode {
         // Retry sending if we hit the writable() false positive
         for _ in 0..3 {
             self.serial_connection().writable().await.expect("Unable to write to serial port");
+            println!("Serial port writeable");
             match self.serial_connection().try_write(code.as_bytes()) {
                 Err(e) => match e.kind() {
                     io::ErrorKind::WouldBlock => {
@@ -82,7 +83,11 @@ impl Gcode {
                     },
                     other_error => panic!("Error writing to serial port: {:?}", other_error),
                 },
-                Ok(_) => return,
+                Ok(n) => {
+                    println!("Wrote {} bytes", n);
+                    self.serial_connection().flush();
+                    return;
+                }
             };
         }
     }
@@ -93,7 +98,7 @@ impl Gcode {
 
         while !str::from_utf8(read_bytes.as_slice()).unwrap().contains(response.as_str()) {
             self.serial_connection().readable().await.expect("Unable to read from serial port");
-
+            println!("Serial port readable");
             match self.serial_connection().try_read(read_bytes.as_mut_slice()) {
                 Err(e) => match e.kind() {
                     io::ErrorKind::WouldBlock => {

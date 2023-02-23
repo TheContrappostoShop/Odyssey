@@ -68,8 +68,15 @@ impl Gcode {
         while !str::from_utf8(read_bytes.as_slice()).unwrap().contains(response.as_str()) {
             read_bytes.clear();
 
-            let count = self.serial_port.read(&mut read_bytes).unwrap();
-            println!("Read {} bytes from serial: {}", count, str::from_utf8(read_bytes.as_slice()).unwrap())
+            match self.serial_port.read(&mut read_bytes) {
+                Err(e) => match e.kind() {
+                    io::ErrorKind::TimedOut => {
+                        continue;
+                    },
+                    other_error => panic!("Error reading from serial port: {:?}", other_error),
+                },
+                Ok(n) => println!("Read {} bytes from serial: {}", n, str::from_utf8(read_bytes.as_slice()).unwrap()),
+            };
         }
         
     }

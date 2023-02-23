@@ -1,11 +1,11 @@
 use core::panic;
-use std::io::{self, Write};
+use std::io::{self, Write, Read};
 use std::thread::spawn;
 use std::{collections::HashMap, str};
 
 use regex::Regex;
 use async_trait::async_trait;
-use serialport::{SerialPort, SerialPortBuilder};
+use serialport::{TTYPort, SerialPortBuilder};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 
 use crate::configuration::{GcodeConfig, Configuration};
@@ -17,7 +17,7 @@ pub struct Gcode {
     pub config: GcodeConfig,
     pub state: PhysicalState,
     pub gcode_substitutions: HashMap<String, String>,
-    pub serial_port: Box<dyn SerialPort>,
+    pub serial_port: TTYPort,
     pub transceiver: (Sender<String>, Receiver<String>),
 }
 
@@ -26,6 +26,8 @@ pub struct Gcode {
 impl Gcode {
     pub fn new(config: Configuration, serial_builder: SerialPortBuilder) -> Gcode {
         let transceiver = mpsc::channel(100);
+        let mut port = serial_builder.open_native().expect("Unable to open serial connection");
+        port.set_exclusive(false);
         return Gcode { 
             config: config.gcode, 
             state: PhysicalState { 
@@ -33,12 +35,12 @@ impl Gcode {
                 curing: false 
             }, 
             gcode_substitutions: HashMap::new(),
-            serial_port: serial_builder.open().expect("Unable to open serial connection"),
+            serial_port: port,
             transceiver: transceiver,
         }
     }
 
-    pub async fn run_listener(mut port: Box<dyn SerialPort>, sender: Sender<String>) {
+    pub async fn run_listener(mut port: TTYPort, sender: Sender<String>) {
         {
             let mut read_bytes: Vec<u8> = vec![0; 512];
             loop {
@@ -155,7 +157,7 @@ impl HardwareControl for Gcode {
     async fn start_print(&mut self) -> PhysicalState {
         // Run the serial port listener task
         tokio::spawn(Gcode::run_listener(
-            self.serial_port.as_mut().try_clone().expect("Unable to clone serial connection"),
+            self.serial_port.try_clone_native().expect("Unable to clone serial connection"),
             self.transceiver.0.clone()
         ));
 

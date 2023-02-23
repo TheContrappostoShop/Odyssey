@@ -84,7 +84,7 @@ impl Gcode {
                     other_error => panic!("Error writing to serial port: {:?}", other_error),
                 },
                 Ok(n) => {
-                    println!("Wrote {} bytes", n);
+                    println!("Wrote {} bytes: {:?}", n, code.as_bytes());
                     self.serial_connection().flush();
                     return;
                 }
@@ -97,16 +97,19 @@ impl Gcode {
         println!("Expecting response: {}", response);
 
         while !str::from_utf8(read_bytes.as_slice()).unwrap().contains(response.as_str()) {
+            read_bytes.clear();
+
             self.serial_connection().readable().await.expect("Unable to read from serial port");
             println!("Serial port readable");
             match self.serial_connection().try_read(read_bytes.as_mut_slice()) {
                 Err(e) => match e.kind() {
                     io::ErrorKind::WouldBlock => {
+                        println!("readable() false positive :(");
                         continue;
                     },
                     other_error => panic!("Error reading from serial port: {:?}", other_error),
                 },
-                Ok(_) => println!("Read from serial: {}", str::from_utf8(read_bytes.as_slice()).unwrap()),
+                Ok(n) => println!("Read {} bytes from serial: {}", n, str::from_utf8(read_bytes.as_slice()).unwrap()),
             };
         }
         

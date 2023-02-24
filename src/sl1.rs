@@ -121,6 +121,3 @@ impl<'a> Sl1 {
         self.config.layer_height
     }
 }
-
-
-

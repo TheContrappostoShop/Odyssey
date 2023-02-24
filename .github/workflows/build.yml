@@ -39,10 +39,10 @@ jobs:
           field: 'package.version'
 
       - uses: ncipollo/release-action@v1
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/artifact_fix'
         with:
           artifacts: target/armv7-unknown-linux-gnueabihf/release/odyssey,target/armv7-unknown-linux-gnueabihf/release/odyssey.yaml
-          tag: v${{ steps.read_toml.outputs.value }}
+          tag: v${{ steps.read_toml.outputs.value }}_test
           skipIfReleaseExists: true
           generateReleaseNotes: true
           commit: ${{github.sha}}

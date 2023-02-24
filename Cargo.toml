@@ -19,4 +19,4 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3.26"
 async-trait = "0.1.64"
 regex = "1"
-serialport = "4.2.0"
+serialport = { version = "4.2.0", default-features = false }

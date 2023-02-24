@@ -26,5 +26,5 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ${{ steps.compress.outputs.image }}
+          name: odyssey
           path: target/release/

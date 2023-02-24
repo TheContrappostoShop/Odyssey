@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - release_flow
 
 jobs:
   build:
@@ -22,7 +23,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         with:
           artifacts: target/release/odyssey
-          tag: v${{ steps.read_toml.outputs.value }}
+          tag: v${{ steps.read_toml.outputs.value }}_fake
           skipIfReleaseExists: true
           generateReleaseNotes: true
           commit: ${{github.sha}}

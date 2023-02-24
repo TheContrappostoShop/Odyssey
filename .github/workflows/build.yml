@@ -28,7 +28,9 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: odyssey
-          path: target/armv7-unknown-linux-gnueabihf/release/odyssey*
+          path: |
+            target/armv7-unknown-linux-gnueabihf/release/odyssey
+            target/armv7-unknown-linux-gnueabihf/release/odyssey.yaml
 
       - uses: SebRollen/toml-action@v1.0.1
         id: read_toml
@@ -39,7 +41,7 @@ jobs:
       - uses: ncipollo/release-action@v1
         if: github.ref == 'refs/heads/main'
         with:
-          artifacts: target/armv7-unknown-linux-gnueabihf/release/odyssey*
+          artifacts: target/armv7-unknown-linux-gnueabihf/release/odyssey,target/armv7-unknown-linux-gnueabihf/release/odyssey.yaml
           tag: v${{ steps.read_toml.outputs.value }}
           skipIfReleaseExists: true
           generateReleaseNotes: true

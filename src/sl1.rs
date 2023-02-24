@@ -38,9 +38,9 @@ impl PrintConfig {
     fn exposure_time(&self, index: usize) -> f32 {
         if index<self.num_fade {
             let fade_rate = (self.num_fade - index) as f32 / self.num_fade as f32;
-            return self.exp_time + (self.exp_time_first-self.exp_time) * (fade_rate);
+            self.exp_time + (self.exp_time_first-self.exp_time) * (fade_rate)
         } else {
-            return self.exp_time;
+            self.exp_time
         }
     }
     
@@ -50,7 +50,7 @@ impl PrintConfig {
             .add_source(ConfigFile::from_str(contents.as_str(), FileFormat::Ini))
             .build()?;
 
-        return s.try_deserialize();
+        s.try_deserialize()
     }
 }
 
@@ -70,7 +70,7 @@ pub struct Sl1 {
 impl<'a> Sl1 {
     /// Instantiate the Sl1 from the given file
     pub fn from_file(file_name: String) -> Sl1 {
-        let file = File::open(file_name.clone()).unwrap();
+        let file = File::open(file_name).unwrap();
         let mut archive = ZipArchive::new(file).unwrap();
 
         let mut config_contents = String::new();
@@ -81,12 +81,12 @@ impl<'a> Sl1 {
 
         Sl1 {
             frame_list: archive.file_names()
-                .map(|name| String::from(name))
+                .map(String::from)
                 .filter(|name| name.ends_with(".png") && !name.contains('/'))
                 .sorted()
                 .collect(),
-            archive: archive,
-            config: config,
+            archive,
+            config,
         }
     }
 
@@ -104,21 +104,21 @@ impl<'a> Sl1 {
                 return Some(Layer {
                     file_name: self.frame_list[index].clone(),
                     data: ret,
-                    exposure_time: self.config.exposure_time(index).clone()
+                    exposure_time: self.config.exposure_time(index)
                 });
             }
         }
-        return None;
+        None
     }
 
     // Will be used to report status in the future
     #[allow(dead_code)]
     pub fn get_frame_count(& self) -> usize {
-        return self.frame_list.len();
+        self.frame_list.len()
     }
 
     pub fn get_layer_height(& self) -> f32 {
-        return self.config.layer_height.clone();
+        self.config.layer_height
     }
 }
 

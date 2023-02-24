@@ -16,15 +16,15 @@ impl Frame {
         let mut png_reader = decoder.read_info().expect("Unable to read PNG metadata");
 
         let mut f = Frame {
-            file_name: name.clone(),
+            file_name: name,
             buffer: vec![0;png_reader.output_buffer_size()],
-            exposure_time: exposure_time,
+            exposure_time,
             bit_depth: png_reader.info().bit_depth as u8,
         };
 
         png_reader.next_frame(f.buffer.as_mut()).expect("Error reading PNG");
 
-        return f;
+        f
     }
 }
 
@@ -51,7 +51,7 @@ impl PrintDisplay {
                 for i in 0..pixels_per_chunk {
                     // Truncate the pixel data to the display's bit depth, then shift it into place in the raw chunk
                     let shifted_pixel: u64 = ((pixel_chunk[i as usize] as u64) >> depth_difference)<< (i*self.bit_depth+chunk_remainder);
-                    raw_chunk = raw_chunk | shifted_pixel;
+                    raw_chunk |= shifted_pixel;
                 }
 
                 for i in 0..(self.chunk_size/8) {
@@ -62,7 +62,7 @@ impl PrintDisplay {
         });
 
         frame.buffer = new_buffer;
-        return frame;
+        frame
     }
 
     pub fn display_frame(&mut self, mut frame: Frame) {

@@ -71,7 +71,7 @@ impl Frame {
             let frame = Frame::from_vec(layer.file_name, layer.exposure_time, layer.data);
             return Some(frame);
         }
-        return None;
+        None
     }
 }
 

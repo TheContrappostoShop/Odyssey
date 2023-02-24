@@ -69,6 +69,6 @@ impl Configuration {
             .add_source(File::with_name(config_file.as_str()).required(true))
             .build()?;
 
-        return s.try_deserialize();
+        s.try_deserialize()
     }
 }

@@ -31,7 +31,7 @@ impl Gcode {
         port.set_exclusive(false).expect("Unable to set serial port exclusivity(false)");
         port.clear(ClearBuffer::All).expect("Unable to clear serialport buffers");
 
-        return Gcode { 
+        Gcode {
             config: config.gcode, 
             state: PhysicalState { 
                 z: 0.0, 
@@ -39,7 +39,7 @@ impl Gcode {
             }, 
             gcode_substitutions: HashMap::new(),
             serial_port: port,
-            transceiver: transceiver,
+            transceiver,
         }
     }
 
@@ -77,18 +77,17 @@ impl Gcode {
         let mut parsed_code = code.clone();
 
         for sub in re.find_iter(&code) {
-            let value = self.gcode_substitutions.get(sub.as_str());
-            if value.is_some() {
-                parsed_code = parsed_code.replace(sub.as_str(), value.unwrap())
+            if let Some(value) = self.gcode_substitutions.get(sub.as_str()) {
+                parsed_code = parsed_code.replace(sub.as_str(), value)
             } else {
                 panic!("Attempted to use gcode substitution {} in context where it was unavailable: {}", sub.as_str(), code);
             }
         }
-        return parsed_code;
+        parsed_code
     }
 
     async fn send_gcode(&mut self, code: String) {
-        let parsed_code = self.parse_gcode(code.clone())+"\r\n";
+        let parsed_code = self.parse_gcode(code)+"\r\n";
         println!("Executing gcode: {}", parsed_code.trim_end());
         
         let n = self.serial_port.write(parsed_code.as_bytes()).unwrap();
@@ -118,7 +117,7 @@ impl Gcode {
     /// that change
     fn set_position(&mut self, position: f32) -> PhysicalState {
         self.state.z = position;
-        return self.state;
+        self.state
     }
 
     /// Set the internally-stored curing state. Any method which uses a send_gcode
@@ -126,7 +125,7 @@ impl Gcode {
     /// call this method to reflect that change
     fn set_curing(&mut self, curing: bool) -> PhysicalState {
         self.state.curing = curing;
-        return self.state;
+        self.state
     }
 
 }

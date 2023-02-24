@@ -34,7 +34,7 @@ fn main() {
     let configuration: Configuration = configuration::Configuration::load(args.config).unwrap();
 
     let serial = serialport::new(
-        configuration.printer.serial.clone(), configuration.printer.baud.clone()
+        configuration.printer.serial.clone(), configuration.printer.baud
     );
 
     let mut gcode = Gcode::new(configuration.clone(), serial);
@@ -45,14 +45,14 @@ fn main() {
     gcode.add_gcode_substitution("{z_lift}".to_string(), configuration.printer.z_lift.to_string());
 
     let display: PrintDisplay = PrintDisplay{
-        frame_buffer: Framebuffer::new(configuration.printer.frame_buffer.to_owned()).unwrap(),
+        frame_buffer: Framebuffer::new(configuration.printer.frame_buffer.clone()).unwrap(),
         bit_depth: configuration.printer.fb_bit_depth,
         chunk_size: configuration.printer.fb_chunk_size,
     };
 
     let mut printer: Printer<Gcode> = Printer{
         config: configuration.printer,
-        display: display,
+        display,
         hardware_controller: gcode,
     };
     

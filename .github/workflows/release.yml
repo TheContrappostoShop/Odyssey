@@ -21,7 +21,7 @@ jobs:
       - uses: ncipollo/release-action@v1
         if: github.ref == 'refs/heads/main'
         with:
-          artifacts: target/release/
+          artifacts: target/release/odyssey
           tag: v${{ steps.read_toml.outputs.value }}
           skipIfReleaseExists: true
           generateReleaseNotes: true

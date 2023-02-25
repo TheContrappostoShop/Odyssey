@@ -35,7 +35,7 @@ jobs:
         id: compress
         run: |
           NOW=$(date +"%Y-%m-%d-%H%M")
-          ARCHIVE=$NOW-odyssey-{{ steps.read_toml.outputs.value }}
+          ARCHIVE=$NOW-odyssey-${{ steps.read_toml.outputs.value }}
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey odyssey
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey.yaml odyssey.yaml
           tar -czvf $ARCHIVE.tar.gz  odyssey odyssey.yaml

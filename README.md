@@ -10,6 +10,32 @@ it for the first time, and don't print unattended.**
 
 ## How To Use Odyssey
 
+### CLI
+After [installing](#installation) Odyssey, you need only run the executable on
+your RPi in order to start a print.
+
+Example Usage:
+```
+./odyssey --config odyssey.yaml --file sliced_model.sl1
+```
+
+Command help:
+```
+Usage: odyssey [OPTIONS]
+
+Options:
+  -f, --file <FILE>      Sliced model, in .sl1 format via PrusaSlicer
+  -c, --config <CONFIG>  Odyssey config file [default: ./odyssey.yaml]
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
+### Mainsail Integration
+> Coming Soon!
+
+### Orion UI
+> Coming Soon!
+
 ## Installation
 
 ### Easy Install

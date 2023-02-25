@@ -34,11 +34,9 @@ jobs:
       - name: Copy & Compress output
         id: compress
         run: |
-          NOW=$(date +"%Y-%m-%d-%H%M")
-          ARCHIVE=$NOW-odyssey-${{ steps.read_toml.outputs.value }}
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey odyssey
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey.yaml odyssey.yaml
-          tar -czvf $ARCHIVE.tar.gz  odyssey odyssey.yaml
+          tar -czvf odyssey.tar.gz  odyssey odyssey.yaml
           echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v3
@@ -51,7 +49,7 @@ jobs:
       - uses: ncipollo/release-action@v1
         if: github.ref == 'refs/heads/main'
         with:
-          artifacts: ${{ steps.compress.outputs.archive }}.tar.gz
+          artifacts: odyssey.tar.gz
           tag: v${{ steps.read_toml.outputs.value }}
           skipIfReleaseExists: true
           generateReleaseNotes: true

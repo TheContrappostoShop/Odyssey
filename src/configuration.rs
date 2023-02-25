@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrinterConfig {
     pub serial: String,
-    pub baud: u32,
+    pub baudrate: u32,
     pub frame_buffer: String,
     pub fb_bit_depth: u8,
     pub fb_chunk_size: u8,

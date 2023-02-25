@@ -72,7 +72,11 @@ fn main() {
             .build()
             .unwrap();
 
-        runtime.block_on(printer.print(print_file));
+        runtime.block_on( async {
+            printer.boot().await;
+            printer.print(print_file).await;
+            printer.shutdown().await;
+        });
 
     }
 }

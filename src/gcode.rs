@@ -133,6 +133,12 @@ impl Gcode {
 
 #[async_trait]
 impl HardwareControl for Gcode {
+    async fn home(&mut self) -> PhysicalState{
+        self.send_gcode(self.config.home_command.clone()).await;
+
+        return self.state;
+    }
+
     async fn move_z(&mut self, z: f32) -> PhysicalState {
         self.gcode_substitutions.insert("{z}".to_string(), z.to_string());
 
@@ -157,19 +163,31 @@ impl HardwareControl for Gcode {
     }
     
     async fn start_print(&mut self) -> PhysicalState {
+        self.send_gcode(self.config.print_start.clone()).await;
+
+        return self.state;
+    }
+
+    async fn end_print(&mut self) -> PhysicalState{
+        self.send_gcode(self.config.print_end.clone()).await;
+
+        return self.state;
+    }
+
+    async fn boot(&mut self) -> PhysicalState{
         // Run the serial port listener task
         tokio::spawn(Gcode::run_listener(
             self.serial_port.try_clone_native().expect("Unable to clone serial connection"),
             self.transceiver.0.clone()
         ));
 
-        self.send_gcode(self.config.print_start.clone()).await;
+        self.send_gcode(self.config.boot.clone()).await;
 
         return self.state;
     }
-    
-    async fn end_print(&mut self) -> PhysicalState{
-        self.send_gcode(self.config.print_end.clone()).await;
+
+    async fn shutdown(&mut self) -> PhysicalState{
+        self.send_gcode(self.config.shutdown.clone()).await;
 
         return self.state;
     }

@@ -49,10 +49,10 @@ jobs:
             odyssey.yaml
 
       - uses: ncipollo/release-action@v1
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/artifact_fix'
+        if: github.ref == 'refs/heads/main'
         with:
           artifacts: ${{ steps.compress.outputs.archive }}.tar.gz
-          tag: v${{ steps.read_toml.outputs.value }}_test
+          tag: v${{ steps.read_toml.outputs.value }}
           skipIfReleaseExists: true
           generateReleaseNotes: true
           commit: ${{github.sha}}

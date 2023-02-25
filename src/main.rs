@@ -31,10 +31,11 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let configuration: Configuration = configuration::Configuration::load(args.config).unwrap();
+    let configuration: Configuration = configuration::Configuration::load(args.config)
+        .expect("Config could not be parsed. See example odyssey.yaml for expected fields:");
 
     let serial = serialport::new(
-        configuration.printer.serial.clone(), configuration.printer.baud
+        configuration.printer.serial.clone(), configuration.printer.baudrate
     );
 
     let mut gcode = Gcode::new(configuration.clone(), serial);

@@ -5,6 +5,7 @@
 # connection and its frame buffer specs
 printer:
   serial: /home/pi/printer_data/comms/klippy.serial
+  baudrate: 250000
   frame_buffer: /dev/fb0
   fb_bit_depth: 5
   fb_chunk_size: 16

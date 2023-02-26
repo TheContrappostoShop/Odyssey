@@ -16,11 +16,15 @@ printer:
 # hardware, and signal between the board and Odyssey
 gcode:
   boot: G90
-  shutdown: M84
+  shutdown: |
+    M84
+    SET_PIN PIN=led_array VALUE=0
   home_command: G28
   move_command: G0 Z{z} F300
-  print_start: G28
-  print_end: G0 Z{max_z}
+  print_start: SET_FAN_SPEED FAN=filter_fans SPEED=1
+  print_end: |
+    G0 Z{max_z}
+    SET_FAN_SPEED FAN=filter_fans SPEED=0
   cure_start: SET_PIN PIN=led_array VALUE=650
   cure_end: SET_PIN PIN=led_array VALUE=0
   sync_message: Z_move_comp

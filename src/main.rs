@@ -23,7 +23,7 @@ struct Args {
     file: Option<String>,
 
     /// Odyssey config file
-    #[arg(default_value_t=String::from("./config.json"), short, long)]
+    #[arg(default_value_t=String::from("./odyssey.yaml"), short, long)]
     config: String
 }
 
@@ -72,7 +72,11 @@ fn main() {
             .build()
             .unwrap();
 
-        runtime.block_on(printer.print(print_file));
+        runtime.block_on( async {
+            printer.boot().await;
+            printer.print(print_file).await;
+            printer.shutdown().await;
+        });
 
     }
 }

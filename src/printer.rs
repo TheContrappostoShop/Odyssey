@@ -20,6 +20,8 @@ impl<T: HardwareControl> Printer<T> {
         let layer_height = file.get_layer_height();
         let z_lift = self.config.z_lift;
 
+        // Home kinematics and execute start_print command
+        self.hardware_controller.home().await;
         self.hardware_controller.start_print().await;
 
         // Fetch and generate the first frame
@@ -61,8 +63,17 @@ impl<T: HardwareControl> Printer<T> {
         self.hardware_controller.end_print().await;
         println!("Print complete.");
     }
-}
 
+    pub async fn boot(&mut self) {
+        println!("Booting up printer.");
+        self.hardware_controller.boot().await;
+    }
+
+    pub async fn shutdown(&mut self) {
+        println!("Shutting down.");
+        self.hardware_controller.shutdown().await;
+    }
+}
 
 impl Frame {
     async fn from_layer(layer: Option<Layer>) -> Option<Frame> {
@@ -84,9 +95,12 @@ pub struct PhysicalState {
 
 #[async_trait]
 pub trait HardwareControl {
+    async fn home(&mut self) -> PhysicalState;
     async fn start_print(&mut self) -> PhysicalState;
     async fn end_print(&mut self) -> PhysicalState;
     async fn move_z(&mut self, z: f32) -> PhysicalState;
     async fn start_curing(&mut self) -> PhysicalState;
     async fn stop_curing(&mut self) -> PhysicalState;
+    async fn boot(&mut self) -> PhysicalState;
+    async fn shutdown(&mut self) -> PhysicalState;
 }

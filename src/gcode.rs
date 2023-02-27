@@ -59,7 +59,7 @@ impl Gcode {
                 },
                 Ok(n) => {
                     if n>0 {
-                        println!("Read {} bytes from serial: {}", n, read_string.trim_end());
+                        //println!("Read {} bytes from serial: {}", n, read_string.trim_end());
                         sender.send(read_string).await.expect("Unable to send message to channel");
                     }
                 },

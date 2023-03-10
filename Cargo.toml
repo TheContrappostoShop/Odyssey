@@ -20,3 +20,4 @@ futures = "0.3.26"
 async-trait = "0.1.64"
 regex = "1"
 serialport = { version = "4.2.0", default-features = false }
+poem = { version = "1.3.55", features = ["websocket", "multipart"]}

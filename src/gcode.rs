@@ -191,4 +191,8 @@ impl HardwareControl for Gcode {
 
         return self.state;
     }
+
+    fn get_physical_state(&self) -> PhysicalState {
+        self.state
+    }
 }

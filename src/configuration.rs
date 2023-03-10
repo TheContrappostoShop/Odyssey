@@ -26,9 +26,16 @@ pub struct GcodeConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ApiConfig {
+    pub upload_path: String,
+    pub port: u16
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Configuration {
     pub printer: PrinterConfig,
     pub gcode: GcodeConfig,
+    pub api: ApiConfig,
 }
 
 impl Configuration {

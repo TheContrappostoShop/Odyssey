@@ -25,7 +25,10 @@ struct Args {
 
     /// Odyssey config file
     #[arg(default_value_t=String::from("./odyssey.yaml"), short, long)]
-    config: String
+    config: String,
+
+    #[arg(default_value_t=false, short, long)]
+    test: bool
 }
 
 

@@ -35,6 +35,8 @@ impl<T: HardwareControl> Printer<T> {
         let mut file = Sl1::from_file(self.get_file_name());
 
         let layer_height = file.get_layer_height();
+        
+        let mut pause_interv = interval(Duration::from_millis(100));
 
         // Fetch and generate the first frame
         let mut optional_frame = Frame::from_layer(
@@ -50,6 +52,7 @@ impl<T: HardwareControl> Printer<T> {
             match self.state {
                 PrinterState::Printing { paused, layer, .. } => {
                     if paused {
+                        pause_interv.tick().await;
                         continue;
                     }
                     else {
@@ -128,6 +131,7 @@ impl<T: HardwareControl> Printer<T> {
     }
     
     pub async fn start_print(&mut self, file_name: String) {
+        println!("Starting Print");
         // Home kinematics and execute start_print command, reporting state in
         // between in case of long-running commands
         let mut physical_state = self.hardware_controller.home().await;
@@ -177,6 +181,8 @@ impl<T: HardwareControl> Printer<T> {
     // Update printing state with given values, and emit to status channel
     async fn update_printing_state(&mut self, file_name: String, paused: bool, layer: usize, physical_state: PhysicalState) {
         self.state = PrinterState::Printing { file_name, paused, layer, physical_state };
+
+        println!("Updating printing state: {:?}", self.state);
         
         self.send_status().await;
     }
@@ -216,6 +222,11 @@ impl<T: HardwareControl> Printer<T> {
 
     pub async fn get_status_receiver(&mut self) -> broadcast::Receiver<PrinterState> {
         return self.status_channel.0.subscribe();
+    }
+
+    // Can be cloned, and can be used with .subscribe() to generate a receiver
+    pub async fn get_status_sender(&mut self) -> broadcast::Sender<PrinterState> {
+        return self.status_channel.0.clone();
     }
 
     async fn send_status(&mut self) {
@@ -269,10 +280,16 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     async fn idle_event_loop(&mut self) {
-        let mut interv = interval(Duration::from_millis(100));
+        let mut interv = interval(Duration::from_millis(1000));
         loop {
             self.idle_operation_handler().await;
-            interv.tick().await;
+
+            match self.state {
+                PrinterState::Idle { .. } => {
+                    interv.tick().await;
+                },
+                _ => break,
+            }
         }
     }
 }

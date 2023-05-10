@@ -28,6 +28,7 @@ pub struct GcodeConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApiConfig {
     pub upload_path: String,
+    pub usb_glob: String,
     pub port: u16
 }
 

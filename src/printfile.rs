@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LocationCategory {
     Local,
-    USB
+    Usb
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

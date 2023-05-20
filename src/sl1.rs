@@ -86,7 +86,7 @@ impl PrintFile for Sl1 {
             .collect();
 
         let metadata =  PrintMetadata { 
-            file_data: file_data,
+            file_data,
             used_material: config.used_material,
             print_time: config.print_time,
             layer_height: config.layer_height,
@@ -106,8 +106,7 @@ impl PrintFile for Sl1 {
 
             let frame_file = self.archive.by_name(self.frame_list[index].as_str());
 
-            if frame_file.is_ok() {
-                let mut frame_file = frame_file.unwrap();
+            if let Ok(mut frame_file) = frame_file {
                 let mut ret: Vec<u8> = Vec::new();
 
                 frame_file.read_to_end(&mut ret).expect("Error reading file from archive");

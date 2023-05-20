@@ -23,7 +23,7 @@ use crate::{configuration::ApiConfig, printer::{Operation, PrinterState}, printf
 
 fn get_file_path(configuration: &ApiConfig, file_name: String, location: LocationCategory) -> Result<String, NotFoundError> {
     match location {
-        LocationCategory::USB => {
+        LocationCategory::Usb => {
             get_usb_file_path(configuration, file_name)
         },
         LocationCategory::Local => {
@@ -37,8 +37,7 @@ fn get_usb_file_path(configuration: &ApiConfig, file_name: String) -> Result<Str
     let paths = glob(&configuration.usb_glob)
         .map_err(|_| NotFoundError)?;
 
-    let path_buf = paths.filter(|path| path.is_ok())
-        .map(|path| path.unwrap())
+    let path_buf = paths.filter_map(|path| path.ok())
         .find(|path|
             path.ends_with(file_name.clone())
         ).ok_or(NotFoundError)?;
@@ -155,14 +154,14 @@ async fn get_files(
         LocationCategory::Local => {
             _get_local_files(page_params, configuration)
         },
-        LocationCategory::USB => {
+        LocationCategory::Usb => {
             _get_usb_files(page_params, configuration)
         }
     }
 }
 
 fn _get_local_files(page_params: PageParams, configuration: &ApiConfig) -> Result<Json<FilesResponse>> {
-    let upload_string = configuration.upload_path.as_str().clone();
+    let upload_string = configuration.upload_path.as_str();
     let upload_path = Path::new(upload_string);
     let upload_read_dir = upload_path.read_dir();
 
@@ -178,7 +177,7 @@ fn _get_local_files(page_params: PageParams, configuration: &ApiConfig) -> Resul
     
     let files = chunks_iterator
         .nth(page_params.page_index)
-        .ok_or_else(|| NotFoundError)?
+        .ok_or(NotFoundError)?
         .flat_map(|f| get_print_metadata(f, LocationCategory::Local).ok())
         .collect_vec();
     
@@ -193,7 +192,7 @@ fn _get_local_files(page_params: PageParams, configuration: &ApiConfig) -> Resul
 }
 
 
-fn _get_usb_files(page_params: PageParams, configuration: &ApiConfig) -> Result<Json<FilesResponse>> {
+fn _get_usb_files(_page_params: PageParams, _configuration: &ApiConfig) -> Result<Json<FilesResponse>> {
     Err(NotImplemented(MethodNotAllowedError))
 
     /*    
@@ -209,11 +208,10 @@ fn _get_usb_files(page_params: PageParams, configuration: &ApiConfig) -> Result<
 fn get_print_metadata(file: DirEntry, location: LocationCategory) -> Result<PrintMetadata> {
             let modified_time = file.metadata().ok()
                 .and_then(|meta| meta.modified().ok())
-                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-                .and_then(|dur| Some(dur.as_millis()));
+                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok()).map(|dur| dur.as_millis());
 
             let file_data = FileData {
-                path: file.path().clone().into_os_string().into_string().map_err(|_| NotFoundError)?,
+                path: file.path().into_os_string().into_string().map_err(|_| NotFoundError)?,
                 name: file.file_name().into_string().map_err(|_| NotFoundError)?,
                 last_modified: modified_time,
                 location_category: location
@@ -229,7 +227,7 @@ async fn get_file(
 ) -> Result<Vec<u8>> {
     match location {
         LocationCategory::Local => _get_local_file(file_name, configuration),
-        LocationCategory::USB => _get_usb_file(file_name, configuration)
+        LocationCategory::Usb => _get_usb_file(file_name, configuration)
     }
 }
 
@@ -251,8 +249,8 @@ fn _get_local_file(
 }
 
 fn _get_usb_file(
-    file_name: String,
-    configuration: &ApiConfig
+    _file_name: String,
+    _configuration: &ApiConfig
 ) -> Result<Vec<u8>> {
     Err(NotImplemented(MethodNotAllowedError))
 }
@@ -261,13 +259,13 @@ fn _get_usb_file(
 
 #[handler]
 async fn delete_file(
-    URLPath((location, file_name)): URLPath<(LocationCategory,String)>,
-    Data(configuration): Data<&ApiConfig>
+    URLPath((_location, _file_name)): URLPath<(LocationCategory,String)>,
+    Data(_configuration): Data<&ApiConfig>
 ) -> Result<Json<FileData>> {
     Err(NotImplemented(MethodNotAllowedError))
 }
 
-async fn run_state_listener(mut state_receiver: broadcast::Receiver<PrinterState>, mut state_ref: Arc<RwLock<PrinterState>>) {
+async fn run_state_listener(mut state_receiver: broadcast::Receiver<PrinterState>, state_ref: Arc<RwLock<PrinterState>>) {
     let mut interv = interval(Duration::from_millis(1000));
 
     let mut state: Result<PrinterState, broadcast::error::TryRecvError>;

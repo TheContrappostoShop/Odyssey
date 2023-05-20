@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex, atomic::AtomicPtr}, path::Path, fs::File, io::Write, time::Duration};
+use std::{sync::Arc, path::Path, fs::{File, DirEntry}, io::{Write, Read}, time::{Duration, UNIX_EPOCH}};
 
 use itertools::Itertools;
 use poem::{
@@ -8,31 +8,77 @@ use poem::{
     web::{
         Path as URLPath,
         Data,
-        Json, Multipart
+        Json, Multipart, Query
     }, 
     Route, 
     EndpointExt, 
-    Server, 
-    post};
+    Server,
+    Result,
+    post, IntoResponse, error::{NotFoundError, NotImplemented, MethodNotAllowedError}};
+use serde::{Deserialize, Serialize};
 use tokio::{sync::{mpsc, broadcast, RwLock}, time::interval};
 use glob::glob;
 
-use crate::{configuration::ApiConfig, printer::{Printer, Operation, PrinterState}, gcode::Gcode};
+use crate::{configuration::ApiConfig, printer::{Operation, PrinterState}, printfile::{LocationCategory, FileData, PrintMetadata, PrintFile}, sl1::Sl1};
 
-#[handler]
-fn hello(URLPath(name): URLPath<String>) -> String {
-    format!("hello: {}", name)
+fn get_file_path(configuration: &ApiConfig, file_name: String, location: LocationCategory) -> Result<String, NotFoundError> {
+    match location {
+        LocationCategory::USB => {
+            get_usb_file_path(configuration, file_name)
+        },
+        LocationCategory::Local => {
+            get_local_file_path(configuration, file_name)
+        }
+    }
 }
 
+// Since USB paths are specified as a glob, find all and filter to file_name
+fn get_usb_file_path(configuration: &ApiConfig, file_name: String) -> Result<String, NotFoundError> {
+    let paths = glob(&configuration.usb_glob)
+        .map_err(|_| NotFoundError)?;
+
+    let path_buf = paths.filter(|path| path.is_ok())
+        .map(|path| path.unwrap())
+        .find(|path|
+            path.ends_with(file_name.clone())
+        ).ok_or(NotFoundError)?;
+        
+    path_buf.into_os_string().into_string().map_err(|_| NotFoundError)
+}
+
+// For Local files, look directly for specific file
+fn get_local_file_path(configuration: &ApiConfig, file_name: String) -> Result<String, NotFoundError> {
+    let path = Path::new(&configuration.upload_path).join(file_name);
+
+    if path.exists() {
+        path.into_os_string().into_string().map_err(|_| NotFoundError)
+    }
+    else {
+        Err(NotFoundError)
+    }
+
+}
 
 #[handler]
 // GET /print/start/:file_name
-async fn start_print(URLPath(file_name): URLPath<String>, Data(operation_sender): Data<&mpsc::Sender<Operation>>, Data(configuration): Data<&ApiConfig>) {
-    let file_path = Path::new(&configuration.upload_path.clone())
-        .join(file_name).to_str().expect("Error parsing file location").to_string();
-    operation_sender.send(Operation::StartPrint { file_name: file_path})
+async fn start_print(
+    URLPath((location, file_name)): URLPath<(LocationCategory,String)>,
+    Data(operation_sender): Data<&mpsc::Sender<Operation>>,
+    Data(configuration): Data<&ApiConfig>) -> Result<impl IntoResponse> {
+    
+    let file_path = get_file_path(configuration, file_name.clone(), location.clone())?;
+
+    let file_data = FileData{
+        name: file_name,
+        path: file_path,
+        last_modified: None,
+        location_category: location
+    };
+
+    operation_sender.send(Operation::StartPrint { file_data })
         .await.expect("Error communicating with printer");
     
+    Ok(())
 }
 
 #[handler]
@@ -69,37 +115,156 @@ async fn upload_file(mut multipart: Multipart, Data(configuration): Data<&ApiCon
     }
 }
 
-#[handler]
-async fn get_files(Data(configuration): Data<&ApiConfig>) -> Json<Vec<String>> {
-    poem::web::Json(glob(&(configuration.upload_path.as_str().to_owned()+"/*"))
-        .expect("Failed to parse upload path")
-        .map(|result| result.expect("Error reading path"))
-        .map(|path| path.into_os_string().into_string().expect("Error parsing path"))
-        .collect_vec())
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FilesResponse {
+    pub files: Vec<PrintMetadata>,
+    pub next_index: Option<usize>
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PageParams {
+    page_index: usize,
+    page_size: usize
+}
+
+const DEFAULT_PAGE_INDEX: usize = 0;
+const DEFAULT_PAGE_SIZE: usize = 100;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LocationParams {
+    category: LocationCategory
 }
 
 #[handler]
-async fn get_file(URLPath(file_name): URLPath<String>, Data(configuration): Data<&ApiConfig>) {
-    todo!()
+async fn get_files(
+    location: Result<Query<LocationParams>>,
+    page_params: Result<Query<PageParams>>,
+    Data(configuration): Data<&ApiConfig>
+) -> Result<Json<FilesResponse>> {
+    let location = location.map_or(
+        LocationCategory::Local,
+        |Query(loc_params)| loc_params.category
+    );
+
+    let page_params = page_params.map_or(
+        PageParams {page_index: DEFAULT_PAGE_INDEX, page_size: DEFAULT_PAGE_SIZE},
+        |Query(params)| params
+    );
+
+    match location {
+        LocationCategory::Local => {
+            _get_local_files(page_params, configuration)
+        },
+        LocationCategory::USB => {
+            _get_usb_files(page_params, configuration)
+        }
+    }
 }
 
-#[handler]
-async fn delete_file(URLPath(file_name): URLPath<String>, Data(configuration): Data<&ApiConfig>) {
-    todo!()
+fn _get_local_files(page_params: PageParams, configuration: &ApiConfig) -> Result<Json<FilesResponse>> {
+    let upload_string = configuration.upload_path.as_str().clone();
+    let upload_path = Path::new(upload_string);
+    let upload_read_dir = upload_path.read_dir();
+
+    let files_vec = upload_read_dir.map_err(|_| NotFoundError)?
+        .flatten()
+        .filter(|f| !f.path().is_dir());
+
+
+    let chunks = files_vec
+        .chunks(page_params.page_size);
+
+    let mut chunks_iterator = chunks.into_iter();
+    
+    let files = chunks_iterator
+        .nth(page_params.page_index)
+        .ok_or_else(|| NotFoundError)?
+        .flat_map(|f| get_print_metadata(f, LocationCategory::Local).ok())
+        .collect_vec();
+    
+    let next_index = Some(page_params.page_index+1)
+        .filter(|_| chunks_iterator.next().is_some());
+
+
+    Ok(Json(FilesResponse {
+        files,
+        next_index
+    }))
 }
 
-#[handler]
-async fn get_usb_files(Data(configuration): Data<&ApiConfig>) -> Json<Vec<String>> {
+
+fn _get_usb_files(page_params: PageParams, configuration: &ApiConfig) -> Result<Json<FilesResponse>> {
+    Err(NotImplemented(MethodNotAllowedError))
+
+    /*    
     poem::web::Json(glob(&configuration.usb_glob)
         .expect("Failed to read glob pattern")
         .map(|result| result.expect("Error reading path"))
         .map(|path| path.into_os_string().into_string().expect("Error parsing path"))
-        .collect_vec())
+        .collect_vec()) 
+    */
+}
+
+
+fn get_print_metadata(file: DirEntry, location: LocationCategory) -> Result<PrintMetadata> {
+            let modified_time = file.metadata().ok()
+                .and_then(|meta| meta.modified().ok())
+                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                .and_then(|dur| Some(dur.as_millis()));
+
+            let file_data = FileData {
+                path: file.path().clone().into_os_string().into_string().map_err(|_| NotFoundError)?,
+                name: file.file_name().into_string().map_err(|_| NotFoundError)?,
+                last_modified: modified_time,
+                location_category: location
+            };
+
+            Ok(Sl1::from_file(file_data).get_metadata())
 }
 
 #[handler]
-async fn get_usb_file(URLPath(file_name): URLPath<String>, Data(configuration): Data<&ApiConfig>) {
-    todo!()
+async fn get_file(
+    URLPath((location, file_name)): URLPath<(LocationCategory,String)>,
+    Data(configuration): Data<&ApiConfig>
+) -> Result<Vec<u8>> {
+    match location {
+        LocationCategory::Local => _get_local_file(file_name, configuration),
+        LocationCategory::USB => _get_usb_file(file_name, configuration)
+    }
+}
+
+fn _get_local_file(
+    file_name: String,
+    configuration: &ApiConfig
+) -> Result<Vec<u8>> {
+    let file_path = Path::new(&configuration.upload_path.clone())
+        .join(file_name);
+
+    let ret = File::open(file_path)
+        .and_then(|mut file| {
+            let mut data: Vec<u8> = vec![];
+            file.read_to_end(&mut data)
+                .map(|_| data)
+        }).map_err(|_| NotFoundError);
+
+    ret.map_err(|err| err.into())
+}
+
+fn _get_usb_file(
+    file_name: String,
+    configuration: &ApiConfig
+) -> Result<Vec<u8>> {
+    Err(NotImplemented(MethodNotAllowedError))
+}
+
+
+
+#[handler]
+async fn delete_file(
+    URLPath((location, file_name)): URLPath<(LocationCategory,String)>,
+    Data(configuration): Data<&ApiConfig>
+) -> Result<Json<FileData>> {
+    Err(NotImplemented(MethodNotAllowedError))
 }
 
 async fn run_state_listener(mut state_receiver: broadcast::Receiver<PrinterState>, mut state_ref: Arc<RwLock<PrinterState>>) {
@@ -118,9 +283,9 @@ async fn run_state_listener(mut state_receiver: broadcast::Receiver<PrinterState
     }
 }
 
-pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<Operation>, mut state_receiver: broadcast::Receiver<PrinterState>) {
+pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<Operation>, state_receiver: broadcast::Receiver<PrinterState>) {
     
-    let mut state_ref = Arc::new(RwLock::new(PrinterState::Shutdown));
+    let state_ref = Arc::new(RwLock::new(PrinterState::Shutdown));
     
     tokio::spawn(run_state_listener(
         state_receiver,
@@ -129,17 +294,16 @@ pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<
 
     let app = Route::new()
         .at("/status", get(get_status))
-        .at("/print/start/:file_name", post(start_print))
+        .at("/print/start/:location/:file_name", post(start_print))
         .at("/print/cancel", post(cancel_print))
         .at("/print/pause", post(pause_print))
         .at("/print/resume", post(resume_print))
         .at("/files", get(get_files).post(upload_file))
-        .at("/files/:file_name", get(get_file).delete(delete_file))
-        .at("/files/usb", get(get_usb_files))
-        .at("/files/usb/:file_name", get(get_usb_file))
+        .at("/files/:location/:file_name", get(get_file).delete(delete_file))
         .data(operation_sender)
         .data(state_ref.clone())
-        .data(configuration.clone());
+        .data(configuration.clone())
+        ;//.catch_error(f);
 
     let port = configuration.port.to_string();
     let addr = format!("127.0.0.1:{port}");
@@ -147,6 +311,5 @@ pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<
     Server::new(TcpListener::bind(addr))
         .run(app)
         .await.expect("Error encountered");
-    
-}
 
+}

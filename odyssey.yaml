@@ -37,5 +37,5 @@ gcode:
 api:
   upload_path: /home/ragwafire/printer_data/gcodes
   # glob pattern for finding files in mounted USB devices, if present
-  usb_glob: /media/usb*/*
+  usb_glob: /media/usb*/*.sl1
   port: 12357

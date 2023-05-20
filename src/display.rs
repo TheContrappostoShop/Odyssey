@@ -88,7 +88,7 @@ impl PrintDisplay {
 
 impl Clone for PrintDisplay {
     fn clone(&self) -> Self {
-        Self::new(self.fb_path.clone(), self.bit_depth.clone(), self.chunk_size.clone()) 
+        Self::new(self.fb_path.clone(), self.bit_depth, self.chunk_size) 
     }
 }
 

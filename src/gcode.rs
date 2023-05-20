@@ -140,6 +140,9 @@ impl HardwareControl for Gcode {
     }
 
     async fn move_z(&mut self, z: f32) -> PhysicalState {
+        // To handle floating point precision issues, truncate to micron precision
+        let z = (z*1000.0).trunc()/1000.0;
+
         self.gcode_substitutions.insert("{z}".to_string(), z.to_string());
 
         self.send_and_await_gcode(self.config.move_command.clone(), self.config.sync_message.clone()).await;

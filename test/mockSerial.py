@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import os, pty, serial, time
 
 master, slave = pty.openpty()

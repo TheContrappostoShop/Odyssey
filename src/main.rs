@@ -1,13 +1,10 @@
-use std::time::Duration;
-
-//#[macro_use] extern crate rocket;
 use clap::Parser;
 use configuration::Configuration;
 
 use display::PrintDisplay;
-use tokio::{runtime::{Builder, Runtime}, time::sleep};
+use tokio::{runtime::{Builder, Runtime}};
 
-use crate::{printer::{Printer, Operation}, gcode::Gcode};
+use crate::{printer::Printer, gcode::Gcode};
 
 mod api;
 mod configuration;
@@ -15,20 +12,14 @@ mod sl1;
 mod display;
 mod printer;
 mod gcode;
+mod printfile;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Sliced model, in .sl1 format via PrusaSlicer
-    #[arg(short, long)]
-    file: Option<String>,
-
     /// Odyssey config file
     #[arg(default_value_t=String::from("./odyssey.yaml"), short, long)]
-    config: String,
-
-    #[arg(default_value_t=false, short, long)]
-    test: bool
+    config: String
 }
 
 
@@ -40,55 +31,18 @@ fn main() {
 
     let runtime = build_runtime();
     
-    if args.file.is_some() {
-        let print_file = args.file.unwrap();
+    runtime.block_on(async {
+        let sender = printer.get_operation_sender().await.clone();
+        let receiver = printer.get_status_receiver().await;
 
-        println!("Starting Odyssey in CLI mode, printing {}", print_file);
+        tokio::spawn( async move { printer.start_statemachine().await });
 
-        runtime.block_on( async move {
-            let sender = printer.get_operation_sender().await.clone();
-            let mut receiver = printer.get_status_receiver().await;
-
-            tokio::spawn( async move { printer.start_statemachine().await });
-
-            sender.send(Operation::StartPrint {file_name: print_file}).await
-                .expect("Failed to send print start command");
-
-            // Wait for the print to start before looking for a return to IDLE state
-            sleep(Duration::from_secs(30)).await;
-
-            let mut state = receiver.recv()
-                .await.expect("Error reading printer state");
-
-            while !(matches!(state, printer::PrinterState::Idle { .. })) {
-                state = receiver.recv()
-                    .await.expect("Error reading printer state")
-            }
-
-            sender.send(Operation::Shutdown).await
-                .expect("Failed to send shutdown command");
-            
-            while !(matches!(state, printer::PrinterState::Shutdown)) {
-                state = receiver.recv()
-                    .await.expect("Error reading printer state")
-            }
-        });
-
-    }
-    else {
-        runtime.block_on(async {
-            let sender = printer.get_operation_sender().await.clone();
-            let receiver = printer.get_status_receiver().await;
-
-            tokio::spawn( async move { printer.start_statemachine().await });
-
-            api::start_api(
-                configuration.api, 
-                sender,
-                 receiver
-            ).await;
-        });
-    }
+        api::start_api(
+            configuration.api, 
+            sender,
+                receiver
+        ).await;
+    });
 }
 
 fn build_runtime() -> Runtime {

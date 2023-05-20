@@ -1,9 +1,12 @@
 use std::{io::Read, fs::File};
 
+use async_trait::async_trait;
 use itertools::Itertools;
 use config::{Config, ConfigError, File as ConfigFile, FileFormat};
 use serde::{Deserialize};
 use zip::ZipArchive;
+
+use crate::printfile::{PrintFile, Layer, PrintMetadata, FileData};
 
 const CONFIG_FILE: &str = "config.ini";
 
@@ -11,7 +14,7 @@ const CONFIG_FILE: &str = "config.ini";
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
-struct PrintConfig {
+pub struct PrintConfig {
     action: String,
     exp_time: f32,
     exp_time_first: f32,
@@ -54,23 +57,20 @@ impl PrintConfig {
     }
 }
 
-pub struct Layer {
-    pub file_name: String,
-    pub data: Vec<u8>,
-    pub exposure_time: f32
-}
-
 /// The sliced .sl1-format model, with the internal config and the full archive contents
 pub struct Sl1 {
     config: PrintConfig,
     archive: ZipArchive<File>,
     frame_list: Vec<String>,
+    metadata: PrintMetadata
 }
 
-impl<'a> Sl1 {
+#[async_trait]
+impl PrintFile for Sl1 {
     /// Instantiate the Sl1 from the given file
-    pub fn from_file(file_name: String) -> Sl1 {
-        let file = File::open(file_name).unwrap();
+    fn from_file(file_data: FileData) -> Sl1 {
+        let file = File::open(file_data.path.clone()).unwrap();
+        
         let mut archive = ZipArchive::new(file).unwrap();
 
         let mut config_contents = String::new();
@@ -79,18 +79,29 @@ impl<'a> Sl1 {
 
         let config = PrintConfig::from_string(config_contents).unwrap();
 
+        let frame_list: Vec<String> = archive.file_names()
+            .map(String::from)
+            .filter(|name| name.ends_with(".png") && !name.contains('/'))
+            .sorted()
+            .collect();
+
+        let metadata =  PrintMetadata { 
+            file_data: file_data,
+            used_material: config.used_material,
+            print_time: config.print_time,
+            layer_height: config.layer_height,
+            layer_count: frame_list.len()
+        };
+
         Sl1 {
-            frame_list: archive.file_names()
-                .map(String::from)
-                .filter(|name| name.ends_with(".png") && !name.contains('/'))
-                .sorted()
-                .collect(),
+            frame_list,
             archive,
             config,
+            metadata
         }
     }
 
-    pub async fn get_layer_data(&mut self, index: usize) -> Option<Layer> {
+    async fn get_layer_data(&mut self, index: usize) -> Option<Layer> {
         if index<self.frame_list.len() {
 
             let frame_file = self.archive.by_name(self.frame_list[index].as_str());
@@ -111,13 +122,15 @@ impl<'a> Sl1 {
         None
     }
 
-    // Will be used to report status in the future
-    #[allow(dead_code)]
-    pub fn get_frame_count(& self) -> usize {
+    fn get_layer_count(& self) -> usize {
         self.frame_list.len()
     }
 
-    pub fn get_layer_height(& self) -> f32 {
+    fn get_layer_height(& self) -> f32 {
         self.config.layer_height
+    }
+
+    fn get_metadata(& self) -> PrintMetadata {
+        self.metadata.clone()
     }
 }

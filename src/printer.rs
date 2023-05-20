@@ -1,8 +1,10 @@
-
 use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use tokio::sync::{mpsc, broadcast};
 
+use crate::printfile::FileData;
+use crate::printfile::Layer;
+use crate::printfile::PrintFile;
 use crate::sl1::*;
 use crate::configuration::*;
 use crate::display::*;
@@ -32,7 +34,7 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     pub async fn print_event_loop(&mut self) {
-        let mut file = Sl1::from_file(self.get_file_name());
+        let mut file = Sl1::from_file(self.get_file_data().unwrap());
 
         let layer_height = file.get_layer_height();
         
@@ -110,35 +112,35 @@ impl<T: HardwareControl> Printer<T> {
     // Move and update printer state
     async fn wrapped_move(&mut self, z: f32) {
         let physical_state = self.hardware_controller.move_z(z).await;
-        self.update_printing_state(self.get_file_name(), false, self.get_layer(), physical_state).await;
+        self.update_printing_state(self.get_file_data().unwrap(), false, self.get_layer(), physical_state).await;
     }
 
     // Start cure and update printer state
     async fn wrapped_start_cure(&mut self) {
         let physical_state =  self.hardware_controller.start_curing().await;
-        self.update_printing_state(self.get_file_name(), false, self.get_layer(), physical_state).await;
+        self.update_printing_state(self.get_file_data().unwrap(), false, self.get_layer(), physical_state).await;
     }
 
     // Stop cure and update printer state
     async fn wrapped_stop_cure(&mut self) {
         let physical_state =  self.hardware_controller.stop_curing().await;
-        self.update_printing_state(self.get_file_name(), false, self.get_layer(), physical_state).await;
+        self.update_printing_state(self.get_file_data().unwrap(), false, self.get_layer(), physical_state).await;
     }
 
     // Update layer in printer state
     async fn set_layer(&mut self, layer: usize) {
-        self.update_printing_state(self.get_file_name(), false, layer, self.get_physical_state()).await;
+        self.update_printing_state(self.get_file_data().unwrap(), false, layer, self.get_physical_state()).await;
     }
     
-    pub async fn start_print(&mut self, file_name: String) {
+    pub async fn start_print(&mut self, file_data: FileData) {
         println!("Starting Print");
         // Home kinematics and execute start_print command, reporting state in
         // between in case of long-running commands
         let mut physical_state = self.hardware_controller.home().await;
-        self.update_printing_state(file_name, false, 0, physical_state).await;
+        self.update_printing_state(file_data, false, 0, physical_state).await;
 
         physical_state = self.hardware_controller.start_print().await;
-        self.update_printing_state(self.get_file_name(), false, 0, physical_state).await;
+        self.update_printing_state(self.get_file_data().unwrap(), false, 0, physical_state).await;
     }
 
     async fn end_print(&mut self) {
@@ -148,16 +150,16 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     async fn pause_print(&mut self) {
-        self.update_printing_state(self.get_file_name(), true, self.get_layer(), self.get_physical_state()).await;
+        self.update_printing_state(self.get_file_data().unwrap(), true, self.get_layer(), self.get_physical_state()).await;
     }
 
     async fn resume_print(&mut self) {
-        self.update_printing_state( self.get_file_name(), false, self.get_layer(), self.get_physical_state()).await;
+        self.update_printing_state( self.get_file_data().unwrap(), false, self.get_layer(), self.get_physical_state()).await;
     }
 
     // Retrieve the current physical state
     fn get_physical_state(&self) -> PhysicalState {
-        return match self.state {
+        match self.state {
             PrinterState::Idle { physical_state } => physical_state,
             PrinterState::Printing { physical_state, .. } => physical_state,
             _ => panic!("cannot get physical state of shutdown machine"),
@@ -165,22 +167,22 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     fn get_layer(&self) -> usize {
-        return match self.state {
+        match self.state {
             PrinterState::Printing { layer, .. } => layer,
             _ => 0,
         }
     }
 
-    fn get_file_name(&self) -> String {
-        return match &self.state {
-            PrinterState::Printing { file_name, .. } => file_name.clone(),
-            _ => "".to_string(),
+    fn get_file_data(&self) -> Option<FileData> {
+        match &self.state {
+            PrinterState::Printing { file_data, .. } => Some(file_data.clone()),
+            _ => None,
         }
     }
 
     // Update printing state with given values, and emit to status channel
-    async fn update_printing_state(&mut self, file_name: String, paused: bool, layer: usize, physical_state: PhysicalState) {
-        self.state = PrinterState::Printing { file_name, paused, layer, physical_state };
+    async fn update_printing_state(&mut self, file_data: FileData, paused: bool, layer: usize, physical_state: PhysicalState) {
+        self.state = PrinterState::Printing { file_data, paused, layer, physical_state };
 
         println!("Updating printing state: {:?}", self.state);
         
@@ -217,16 +219,11 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     pub async fn get_operation_sender(&mut self) -> mpsc::Sender<Operation> {
-        return self.operation_channel.0.clone();
+        self.operation_channel.0.clone()
     }
 
     pub async fn get_status_receiver(&mut self) -> broadcast::Receiver<PrinterState> {
-        return self.status_channel.0.subscribe();
-    }
-
-    // Can be cloned, and can be used with .subscribe() to generate a receiver
-    pub async fn get_status_sender(&mut self) -> broadcast::Sender<PrinterState> {
-        return self.status_channel.0.clone();
+        self.status_channel.0.subscribe()
     }
 
     async fn send_status(&mut self) {
@@ -262,7 +259,7 @@ impl<T: HardwareControl> Printer<T> {
         while operation.is_ok() {
             match operation.unwrap() {
                 Operation::QueryState => self.send_status().await,
-                Operation::StartPrint { file_name } => self.start_print(file_name).await,
+                Operation::StartPrint { file_data } => self.start_print(file_data).await,
                 Operation::ManualMove { z } => self.wrapped_move(z).await,
                 Operation::ManualCure { cure } => {
                     if cure {
@@ -313,14 +310,14 @@ pub struct PhysicalState {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PrinterState {
-    Printing { file_name: String, paused: bool, layer: usize, physical_state: PhysicalState },
+    Printing { file_data: FileData, paused: bool, layer: usize, physical_state: PhysicalState },
     Idle { physical_state: PhysicalState },
     Shutdown,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Operation {
-    StartPrint { file_name: String},
+    StartPrint { file_data: FileData},
     StopPrint,
     PausePrint,
     ResumePrint,

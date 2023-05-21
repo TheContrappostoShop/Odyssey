@@ -112,35 +112,37 @@ impl<T: HardwareControl> Printer<T> {
     // Move and update printer state
     async fn wrapped_move(&mut self, z: f32) {
         let physical_state = self.hardware_controller.move_z(z).await;
-        self.update_printing_state(self.get_file_data().unwrap(), false, self.get_layer(), physical_state).await;
+        self.update_physical_state(physical_state).await;
     }
 
     // Start cure and update printer state
     async fn wrapped_start_cure(&mut self) {
+        println!("Start cure");
         let physical_state =  self.hardware_controller.start_curing().await;
-        self.update_printing_state(self.get_file_data().unwrap(), false, self.get_layer(), physical_state).await;
+        self.update_physical_state(physical_state).await;
     }
 
     // Stop cure and update printer state
     async fn wrapped_stop_cure(&mut self) {
         let physical_state =  self.hardware_controller.stop_curing().await;
-        self.update_printing_state(self.get_file_data().unwrap(), false, self.get_layer(), physical_state).await;
+        self.update_physical_state(physical_state).await;
     }
 
     // Update layer in printer state
     async fn set_layer(&mut self, layer: usize) {
-        self.update_printing_state(self.get_file_data().unwrap(), false, layer, self.get_physical_state()).await;
+        self.update_layer(layer).await;
     }
     
     pub async fn start_print(&mut self, file_data: FileData) {
         println!("Starting Print");
+        self.update_file_data(file_data).await;
         // Home kinematics and execute start_print command, reporting state in
         // between in case of long-running commands
         let mut physical_state = self.hardware_controller.home().await;
-        self.update_printing_state(file_data, false, 0, physical_state).await;
+        self.update_physical_state(physical_state).await;
 
         physical_state = self.hardware_controller.start_print().await;
-        self.update_printing_state(self.get_file_data().unwrap(), false, 0, physical_state).await;
+        self.update_physical_state(physical_state).await;
     }
 
     async fn end_print(&mut self) {
@@ -150,11 +152,11 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     async fn pause_print(&mut self) {
-        self.update_printing_state(self.get_file_data().unwrap(), true, self.get_layer(), self.get_physical_state()).await;
+        self.update_paused(true).await;
     }
 
     async fn resume_print(&mut self) {
-        self.update_printing_state( self.get_file_data().unwrap(), false, self.get_layer(), self.get_physical_state()).await;
+        self.update_paused(false).await;
     }
 
     // Retrieve the current physical state
@@ -180,20 +182,46 @@ impl<T: HardwareControl> Printer<T> {
         }
     }
 
-    // Update printing state with given values, and emit to status channel
-    async fn update_printing_state(&mut self, file_data: FileData, paused: bool, layer: usize, physical_state: PhysicalState) {
-        self.state = PrinterState::Printing { file_data, paused, layer, physical_state };
+    async fn update_physical_state(&mut self, new_physical_state: PhysicalState) {
+        match self.state {
+            PrinterState::Printing { ref mut physical_state , ..} => {
+                *physical_state = new_physical_state;
+            },
+            PrinterState::Idle { ref mut physical_state } => {
+                *physical_state = new_physical_state;
+            }
+            PrinterState::Shutdown => (),
+        }
+        self.send_status().await;
+    }
 
-        println!("Updating printing state: {:?}", self.state);
-        
+    async fn update_paused(&mut self, new_pause: bool) {
+        if let PrinterState::Printing { ref mut paused, ..} = self.state {
+            *paused = new_pause;
+        }
+        self.send_status().await;
+    }
+
+    async fn update_layer(&mut self, new_layer: usize) {
+        if let PrinterState::Printing { ref mut layer, ..} = self.state {
+            *layer = new_layer;
+        }
+        self.send_status().await;
+    }
+
+    async fn update_file_data(&mut self, new_file_data: FileData) {
+        if let PrinterState::Printing { ref mut file_data, ..} = self.state {
+            *file_data = new_file_data;
+        }
         self.send_status().await;
     }
 
     async fn printing_operation_handler(&mut self) {
-        let mut operation = self.operation_channel.1.try_recv();
+        let mut op_result = self.operation_channel.1.try_recv();
 
-        while operation.is_ok() {
-            match operation.unwrap() {
+
+        while let Ok(operation) = op_result {
+            match operation {
                 Operation::PausePrint => self.pause_print().await,
                 Operation::ResumePrint => self.resume_print().await,
                 Operation::StopPrint => self.set_idle().await,
@@ -201,7 +229,7 @@ impl<T: HardwareControl> Printer<T> {
                 Operation::Shutdown => self.shutdown().await,
                 _ => (),
             };
-            operation = self.operation_channel.1.try_recv();
+            op_result = self.operation_channel.1.try_recv();
         }
     }
 
@@ -254,10 +282,10 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     async fn idle_operation_handler(&mut self) {
-        let mut operation = self.operation_channel.1.try_recv();
+        let mut op_result = self.operation_channel.1.try_recv();
 
-        while operation.is_ok() {
-            match operation.unwrap() {
+        while let Ok(operation) = op_result {
+            match operation {
                 Operation::QueryState => self.send_status().await,
                 Operation::StartPrint { file_data } => self.start_print(file_data).await,
                 Operation::ManualMove { z } => self.wrapped_move(z).await,
@@ -272,7 +300,7 @@ impl<T: HardwareControl> Printer<T> {
                 Operation::Shutdown => self.shutdown().await,
                 _ => (),
             };
-            operation = self.operation_channel.1.try_recv();
+            op_result = self.operation_channel.1.try_recv();
         }
     }
 

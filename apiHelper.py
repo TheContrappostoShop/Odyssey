@@ -4,35 +4,56 @@ import requests
 import json
 
 def start(url, location, filename):
-    return
-    #send request
-
-def cli_start(args):
-    return start(args.url, args.location, args.filename)
+    response = requests.post(f"{url}/print/start/{location}/{filename}")
+    return body_or_status_code(response)
 
 def stop(url):
-    return
-    #stop request
-
-def cli_stop(args):
-    return stop(args.url)
+    response = requests.post(f"{url}/print/stop")
+    return body_or_status_code(response)
 
 def pause(url):
-    return
-    #pause request
+    response = requests.post(f"{url}/print/pause")
+    return body_or_status_code(response)
 
-def cli_pause(args):
-    return pause(args.url)
-    
 def resume(url):
-    return
-    #resume request
+    response = requests.post(f"{url}/print/resume")
+    return body_or_status_code(response)
 
-def cli_resume(args):
-    return resume(args.url)
-    
 def status(url):
     response = requests.get(f"{url}/status")
+    return body_or_status_code(response)
+
+def manual_control(url, z, cure):
+    response = requests.post(
+        f"{url}/manual",
+        params = {
+            "z": z,
+            "cure": cure,
+        }
+    )
+    print(response.url)
+    return body_or_status_code(response)
+
+def list_files(url, location, page_index, page_size):
+    response = requests.get(
+        f"{url}/files",
+        params = {
+            "location": location,
+            "page_index": page_index,
+            "page_size": page_size
+        }
+    )
+    return body_or_status_code(response)
+
+def get_file(url, location, filename):
+    response = requests.get(f"{url}/files/{location}/{filename}")
+    return body_or_status_code(response)
+
+def delete_file(url, location, filename):
+    response = requests.delete(f"{url}/files/{location}/{filename}")
+    return body_or_status_code(response)
+
+def body_or_status_code(response):
     response.raise_for_status()
     try:
         return json.dumps(response.json(), indent=4)
@@ -41,7 +62,22 @@ def status(url):
 
 def cli_status(args):
     return status(args.url)
-
+def cli_resume(args):
+    return resume(args.url)
+def cli_pause(args):
+    return pause(args.url)
+def cli_stop(args):
+    return stop(args.url)
+def cli_start(args):
+    return start(args.url, args.location, args.filename)
+def cli_manual_control(args):
+    return manual_control(args.url, args.z, args.cure)
+def cli_list_files(args):
+    return list_files(args.url, args.location, args.page_index, args.page_size)
+def cli_get_file(args):
+    return get_file(args.url, args.location, args.filename)
+def cli_delete_file(args):
+    return delete_file(args.url, args.location, args.filename)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -91,6 +127,18 @@ def main():
         help='Return the current status from Odyssey'
     )
     status_parser.set_defaults(func=cli_status)
+
+    manual_control_parser = subparsers.add_parser(
+        'manual_control',
+        help='Move the z axis of the printer, or toggle curing'
+    )
+    manual_control_parser.add_argument('-z', '--z', help="Desired position of the z axis")
+    manual_control_parser.add_argument(
+        '-c', '--cure',
+        help="Desired curing status",
+        choices=("true", "false")
+    )
+    manual_control_parser.set_defaults(func=cli_manual_control)
 
     args = parser.parse_args()
 

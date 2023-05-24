@@ -4,10 +4,11 @@
 # This section holds the config fields related to the printer, such as its serial
 # connection and its frame buffer specs
 printer:
-  #serial: /home/pi/printer_data/comms/klippy.serial
-  serial: /dev/pts/7
+  serial: /home/pi/printer_data/comms/klippy.serial
+  #serial: /dev/pts/7 # Mock port opened with `python3 test/mockSerial.py`
   baudrate: 250000
-  frame_buffer: /dev/null
+  frame_buffer: /dev/fb0
+  #frame_buffer: /dev/null # Dump frames to null for testing
   fb_bit_depth: 5
   fb_chunk_size: 16
   max_z: 350

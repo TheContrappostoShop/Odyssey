@@ -47,6 +47,7 @@ jobs:
             apiHelper.py
 
       - uses: ncipollo/release-action@v1
+        if: github.ref == 'refs/heads/main'
         with:
           artifacts: odyssey.tar.gz
           tag: v${{ steps.read_toml.outputs.value }}

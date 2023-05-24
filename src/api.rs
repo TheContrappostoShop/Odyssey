@@ -14,7 +14,7 @@ use poem::{
     EndpointExt, 
     Server,
     Result,
-    post, error::{NotFoundError, NotImplemented, MethodNotAllowedError, ServiceUnavailable}, put};
+    post, error::{NotFoundError, NotImplemented, MethodNotAllowedError, ServiceUnavailable}};
 use serde::{Deserialize, Serialize};
 use tokio::{sync::{mpsc, broadcast, RwLock}, time::interval};
 use glob::glob;
@@ -40,25 +40,25 @@ async fn start_print(
     };
 
     operation_sender.send(Operation::StartPrint { file_data }).await
-        .map_err(|err| ServiceUnavailable(err))
+        .map_err(ServiceUnavailable)
 }
 
 #[handler]
 async fn pause_print(Data(operation_sender): Data<&mpsc::Sender<Operation>>) -> Result<()> {
     operation_sender.send(Operation::PausePrint { }).await
-        .map_err(|err| ServiceUnavailable(err))
+        .map_err(ServiceUnavailable)
 }
 
 #[handler]
 async fn resume_print(Data(operation_sender): Data<&mpsc::Sender<Operation>>) -> Result<()> {
     operation_sender.send(Operation::ResumePrint { }).await
-        .map_err(|err| ServiceUnavailable(err))
+        .map_err(ServiceUnavailable)
 }
 
 #[handler]
 async fn cancel_print(Data(operation_sender): Data<&mpsc::Sender<Operation>>) -> Result<()> {
     operation_sender.send(Operation::StopPrint { }).await
-        .map_err(|err| ServiceUnavailable(err))
+        .map_err(ServiceUnavailable)
 }
 
 #[handler]
@@ -81,16 +81,16 @@ async fn manual_control(
     z: Result<Query<ZControl>>,
     cure: Result<Query<CureControl>>,
     Data(operation_sender): Data<&mpsc::Sender<Operation>>,
-    Data(state_ref): Data<&Arc<RwLock<PrinterState>>>
+    Data(_state_ref): Data<&Arc<RwLock<PrinterState>>>
 ) -> Result<()> {
     if let Ok(Query(ZControl { z })) = z {
         operation_sender.send(Operation::ManualMove { z })
-            .await.map_err(|err| ServiceUnavailable(err))?;
+            .await.map_err(ServiceUnavailable)?;
     }
     
     if let Ok(Query(CureControl { cure })) = cure {
         operation_sender.send(Operation::ManualCure { cure })
-            .await.map_err(|err| ServiceUnavailable(err))?;
+            .await.map_err(ServiceUnavailable)?;
     }
 
     Ok(())

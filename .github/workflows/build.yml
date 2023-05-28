@@ -55,10 +55,10 @@ jobs:
           generateReleaseNotes: true
           commit: ${{github.sha}}
       - uses: ncipollo/release-action@v1
-        if: endsWith(github.ref, '_snapshot')
+        if: github.ref != 'refs/heads/main'
         with:
           artifacts: odyssey.tar.gz
-          tag: v${{ steps.read_toml.outputs.value }}_{{github_ref}}
+          tag: BRANCH_{{github.ref}}
           skipIfReleaseExists: false
           draft: true
           generateReleaseNotes: true

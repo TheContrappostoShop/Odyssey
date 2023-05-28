@@ -54,3 +54,12 @@ jobs:
           skipIfReleaseExists: true
           generateReleaseNotes: true
           commit: ${{github.sha}}
+      - uses: ncipollo/release-action@v1
+        if: endsWith(github.ref, '_snapshot')
+        with:
+          artifacts: odyssey.tar.gz
+          tag: v${{ steps.read_toml.outputs.value }}_{{github_ref}}
+          skipIfReleaseExists: false
+          draft: true
+          generateReleaseNotes: true
+          commit: ${{github.sha}}

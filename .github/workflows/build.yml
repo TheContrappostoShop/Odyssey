@@ -58,8 +58,8 @@ jobs:
         if: github.ref != 'refs/heads/main'
         with:
           artifacts: odyssey.tar.gz
-          tag: BRANCH_${{github.ref}}
+          tag: BRANCH_${{github.ref_name}}
           skipIfReleaseExists: false
-          draft: true
+          prerelease: true
           generateReleaseNotes: true
           commit: ${{github.sha}}

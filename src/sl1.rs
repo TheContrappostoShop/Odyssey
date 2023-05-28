@@ -69,6 +69,7 @@ pub struct Sl1 {
 impl PrintFile for Sl1 {
     /// Instantiate the Sl1 from the given file
     fn from_file(file_data: FileData) -> Sl1 {
+        log::info!("Loading PrintFile from SL1 {:?}", file_data);
         let file = File::open(file_data.path.clone()).unwrap();
         
         let mut archive = ZipArchive::new(file).unwrap();

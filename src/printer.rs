@@ -49,8 +49,6 @@ impl<T: HardwareControl> Printer<T> {
             // Run any requested operations that may change the printer state
             self.printing_operation_handler().await;
 
-            // TODO refactor this
-            // Depending on state, either cancel print, wait for unpause, or print as normal
             match self.state {
                 PrinterState::Printing { paused, layer, .. } => {
                     if paused {
@@ -91,19 +89,22 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     async fn print_frame(&mut self, cur_frame: Frame, layer: usize, layer_height: f32) {
+        log::info!("Begin layer {}", layer);
         let layer_z = ((layer+1) as f32)*layer_height;
 
         let exposure_time = cur_frame.exposure_time;
 
         // Move the plate up first, then down into position
+        log::info!("Moving to layer position {}", layer_z);
         self.wrapped_move(layer_z+self.config.z_lift).await;
         self.wrapped_move(layer_z).await;
 
         // Display the current frame to the LCD
+        log::info!("Loading layer to display");
         self.display.display_frame(cur_frame);
 
         // Activate the UV array for the prescribed length of time
-        println!("<Cure for {}>", exposure_time);
+        log::info!("Curing layer for {}s", exposure_time);
         self.wrapped_start_cure().await;
         sleep(Duration::from_secs_f32(exposure_time)).await;
         self.wrapped_stop_cure().await;
@@ -117,7 +118,6 @@ impl<T: HardwareControl> Printer<T> {
 
     // Start cure and update printer state
     async fn wrapped_start_cure(&mut self) {
-        println!("Start cure");
         let physical_state =  self.hardware_controller.start_curing().await;
         self.update_physical_state(physical_state).await;
     }
@@ -134,8 +134,9 @@ impl<T: HardwareControl> Printer<T> {
     }
     
     pub async fn start_print(&mut self, file_data: FileData) {
-        println!("Starting Print");
-        self.update_file_data(file_data).await;
+        log::info!("Starting Print");
+        
+        self.enter_printing_state(file_data).await;
         // Home kinematics and execute start_print command, reporting state in
         // between in case of long-running commands
         let mut physical_state = self.hardware_controller.home().await;
@@ -148,7 +149,7 @@ impl<T: HardwareControl> Printer<T> {
     async fn end_print(&mut self) {
         let physical_state = self.hardware_controller.end_print().await;
         self.update_idle_state(physical_state).await;
-        println!("Print complete.");
+        log::info!("Print complete.");
     }
 
     async fn pause_print(&mut self) {
@@ -179,6 +180,27 @@ impl<T: HardwareControl> Printer<T> {
         match &self.state {
             PrinterState::Printing { file_data, .. } => Some(file_data.clone()),
             _ => None,
+        }
+    }
+
+    async fn enter_printing_state(&mut self, file_data: FileData) {
+        log::info!("Entering printing state");
+        match self.state {
+            PrinterState::Idle { physical_state } => {
+                log::debug!("Transitioning from Idle State");
+                self.state = PrinterState::Printing { 
+                    file_data,
+                    paused: false,
+                    layer: 0,
+                    physical_state
+                };
+            },
+            PrinterState::Printing { .. } => {
+                log::debug!("Already in printing state!");
+            },
+            PrinterState::Shutdown => {
+                log::debug!("Cannot transition out of Shutdown state");
+            }
         }
     }
 
@@ -234,14 +256,14 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     pub async fn boot(&mut self) {
-        println!("Booting up printer.");
+        log::info!("Booting up printer.");
         
         let physical_state = self.hardware_controller.boot().await;
         self.update_idle_state(physical_state).await;
     }
 
     pub async fn shutdown(&mut self) {
-        println!("Shutting down.");
+        log::info!("Shutting down.");
         self.hardware_controller.shutdown().await;
         self.state = PrinterState::Shutdown;
     }

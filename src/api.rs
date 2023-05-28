@@ -1,4 +1,4 @@
-use std::{sync::Arc, path::{Path, PathBuf}, fs::{File, DirEntry}, io::{Write, Read}, time::{Duration, UNIX_EPOCH}};
+use std::{sync::Arc, path::{Path, PathBuf}, fs::{File, DirEntry}, io::{Write, Read}, time::{Duration, UNIX_EPOCH}, ffi::OsStr};
 
 use itertools::Itertools;
 use poem::{
@@ -98,6 +98,7 @@ async fn manual_control(
 
 #[handler]
 async fn upload_file(mut multipart: Multipart, Data(configuration): Data<&ApiConfig>) {
+    log::info!("Uploading file");
     while let Ok(Some(field)) = multipart.next_field().await {
         let file_name = field.file_name().map(ToString::to_string).expect("File name not found");
         if let Ok(bytes) = field.bytes().await {
@@ -143,6 +144,8 @@ async fn get_files(
         |Query(params)| params
     );
 
+    log::info!("Getting files in {:?}, {:?}", location, page_params);
+
     match location {
         LocationCategory::Local => {
             _get_local_files(page_params, configuration)
@@ -160,7 +163,8 @@ fn _get_local_files(page_params: PageParams, configuration: &ApiConfig) -> Resul
 
     let files_vec = upload_read_dir.map_err(|_| NotFoundError)?
         .flatten()
-        .filter(|f| !f.path().is_dir());
+        .filter(|f| !f.path().is_dir())
+        .filter(|f| f.path().extension().and_then(OsStr::to_str).eq(&Some("sl1")));
 
 
     let chunks = files_vec
@@ -170,7 +174,10 @@ fn _get_local_files(page_params: PageParams, configuration: &ApiConfig) -> Resul
     
     let files = chunks_iterator
         .nth(page_params.page_index)
-        .ok_or(NotFoundError)?
+        .ok_or_else(|| {
+            log::error!("Error reading local file dir");
+            NotFoundError
+        })?
         .flat_map(|f| get_print_metadata(f, LocationCategory::Local).ok())
         .collect_vec();
     
@@ -198,6 +205,8 @@ fn _get_usb_files(_page_params: PageParams, _configuration: &ApiConfig) -> Resul
 }
 
 fn get_file_path(configuration: &ApiConfig, file_name: String, location: LocationCategory) -> Result<PathBuf, NotFoundError> {
+    log::info!("Getting file path {:?}, {:?}", location, file_name);
+
     match location {
         LocationCategory::Usb => {
             get_usb_file_path(configuration, file_name)
@@ -216,7 +225,10 @@ fn get_usb_file_path(configuration: &ApiConfig, file_name: String) -> Result<Pat
     let path_buf = paths.filter_map(|path| path.ok())
         .find(|path|
             path.ends_with(file_name.clone())
-        ).ok_or(NotFoundError)?;
+        ).ok_or_else(|| {
+            log::error!("Unable to read USB file");
+            NotFoundError
+        })?;
         
     Ok(path_buf)
 }
@@ -229,18 +241,26 @@ fn get_local_file_path(configuration: &ApiConfig, file_name: String) -> Result<P
         Ok(path)
     }
     else {
+        log::error!("Unable to read local file");
         Err(NotFoundError)
     }
 }
 
 fn get_print_metadata(file: DirEntry, location: LocationCategory) -> Result<PrintMetadata> {
+    log::info!("Getting print metadata");
     let modified_time = file.metadata().ok()
         .and_then(|meta| meta.modified().ok())
         .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok()).map(|dur| dur.as_millis());
 
     let file_data = FileData {
-        path: file.path().into_os_string().into_string().map_err(|_| NotFoundError)?,
-        name: file.file_name().into_string().map_err(|_| NotFoundError)?,
+        path: file.path().into_os_string().into_string().map_err(|_| {
+            log::error!("Error converting file path");
+            NotFoundError
+        })?,
+        name: file.file_name().into_string().map_err(|_| {
+            log::error!("Error converting file name");
+            NotFoundError
+        })?,
         last_modified: modified_time,
         location_category: location
     };

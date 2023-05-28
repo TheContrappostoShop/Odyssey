@@ -59,7 +59,7 @@ impl Gcode {
                 },
                 Ok(n) => {
                     if n>0 {
-                        println!("Read {} bytes from serial: {}", n, read_string.trim_end());
+                        log::debug!("Read {} bytes from serial: {}", n, read_string.trim_end());
                         sender.send(read_string).await.expect("Unable to send message to channel");
                     }
                 },
@@ -88,22 +88,22 @@ impl Gcode {
 
     async fn send_gcode(&mut self, code: String) {
         let parsed_code = self.parse_gcode(code)+"\r\n";
-        println!("Executing gcode: {}", parsed_code.trim_end());
+        log::debug!("Executing gcode: {}", parsed_code.trim_end());
         
         let n = self.serial_port.write(parsed_code.as_bytes()).unwrap();
         self.serial_port.flush().expect("Unable to flush serial connection");
 
-        println!("Wrote {} bytes", n);
+        log::trace!("Wrote {} bytes", n);
     }
 
     async fn await_response(&mut self, response: String) {
         let mut msg = String::new();
-        println!("Expecting response: {}", response);
+        log::trace!("Expecting response: {}", response);
 
         while !msg.contains(response.as_str()) {
             msg = self.transceiver.1.recv().await.expect("Unable to receive message from channel");
         }
-        println!("Expected response received");
+        log::trace!("Expected response received");
         
     }
 

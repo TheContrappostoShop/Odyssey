@@ -1,7 +1,10 @@
+use std::str::FromStr;
+
 use clap::Parser;
 use configuration::Configuration;
 
 use display::PrintDisplay;
+use simple_logger::SimpleLogger;
 use tokio::{runtime::{Builder, Runtime}};
 
 use crate::{printer::Printer, gcode::Gcode};
@@ -19,12 +22,23 @@ mod printfile;
 struct Args {
     /// Odyssey config file
     #[arg(default_value_t=String::from("./odyssey.yaml"), short, long)]
-    config: String
+    config: String,
+    #[arg(default_value_t=String::from("INFO"), short, long)]
+    loglevel: String
 }
 
-
 fn main() {
+
     let args = parse_cli();
+
+    SimpleLogger::new()
+        .with_level(
+            log::LevelFilter::from_str(&args.loglevel)
+                .expect("Unable to parse loglevel")
+        ).init().unwrap();
+
+    log::info!("Starting Odyssey");
+
     let configuration = parse_config(args.config);
 
     let mut printer = build_printer(configuration.clone());

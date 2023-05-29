@@ -60,6 +60,7 @@ jobs:
           artifacts: odyssey.tar.gz
           tag: BRANCH_${{github.ref_name}}
           skipIfReleaseExists: false
+          allowUpdates: true
           prerelease: true
           generateReleaseNotes: true
           commit: ${{github.sha}}

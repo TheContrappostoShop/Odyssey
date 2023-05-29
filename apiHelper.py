@@ -7,8 +7,8 @@ def start(url, location, filename):
     response = requests.post(f"{url}/print/start/{location}/{filename}")
     return body_or_status_code(response)
 
-def stop(url):
-    response = requests.post(f"{url}/print/stop")
+def cancel(url):
+    response = requests.post(f"{url}/print/cancel")
     return body_or_status_code(response)
 
 def pause(url):
@@ -66,8 +66,8 @@ def cli_resume(args):
     return resume(args.url)
 def cli_pause(args):
     return pause(args.url)
-def cli_stop(args):
-    return stop(args.url)
+def cli_cancel(args):
+    return cancel(args.url)
 def cli_start(args):
     return start(args.url, args.location, args.filename)
 def cli_manual_control(args):
@@ -104,11 +104,11 @@ def main():
     start_parser.add_argument('filename')
     start_parser.set_defaults(func=cli_start)
     
-    stop_parser = subparsers.add_parser(
-        'stop',
-        help='Stop the current print (at the end of the current layer)'
+    cancel_parser = subparsers.add_parser(
+        'cancel',
+        help='cancel the current print (at the end of the current layer)'
     )
-    stop_parser.set_defaults(func=cli_stop)
+    cancel_parser.set_defaults(func=cli_cancel)
 
     pause_parser = subparsers.add_parser(
         'pause',

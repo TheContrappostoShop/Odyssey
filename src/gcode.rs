@@ -72,15 +72,18 @@ impl Gcode {
     }
 
 
-    fn parse_gcode(&self, code: String) -> String {
-        let re: Regex = Regex::new(r"\{(\w*)\}").unwrap();
+    fn parse_gcode(&mut self, code: String) -> String {
+        let re: Regex = Regex::new(r"\{(?P<substitution>\w*)\}").unwrap();
         let mut parsed_code = code.clone();
 
-        for sub in re.find_iter(&code) {
-            if let Some(value) = self.gcode_substitutions.get(sub.as_str()) {
-                parsed_code = parsed_code.replace(sub.as_str(), value)
+        self.add_state_variables();
+
+        for caps in re.captures_iter(&code) {
+            let sub = &caps["substitution"].to_string();
+            if let Some(value) = self.gcode_substitutions.get(sub) {
+                parsed_code = parsed_code.replace(sub, value)
             } else {
-                panic!("Attempted to use gcode substitution {} in context where it was unavailable: {}", sub.as_str(), code);
+                panic!("Attempted to use gcode substitution {} in context where it was unavailable: {}", sub, code);
             }
         }
         parsed_code
@@ -97,19 +100,38 @@ impl Gcode {
     }
 
     async fn await_response(&mut self, response: String) {
-        let mut msg = String::new();
         log::trace!("Expecting response: {}", response);
 
-        while !msg.contains(response.as_str()) {
-            msg = self.transceiver.1.recv().await.expect("Unable to receive message from channel");
+        while !self.check_response(&response).await {
+            continue;
         }
         log::trace!("Expected response received");
         
     }
 
+    async fn check_response(&mut self, response: &String) -> bool {
+        self.transceiver.1.recv()
+            .await.expect("Unable to receive message from channel")
+            .contains(response)
+    }
+
     async fn send_and_await_gcode(&mut self, code: String, expect: String) {
         self.send_gcode(code).await;
         self.await_response(expect).await;
+    }
+
+    async fn send_and_check_gcode(&mut self, code: String, expect: String) -> bool {
+        let mut interval = interval(Duration::from_millis(100));
+
+        self.send_gcode(code).await;
+
+        for _ in 0..10 {
+            if self.check_response(&expect).await {
+                return true;
+            }
+            interval.tick().await;
+        }
+        false
     }
 
     /// Set the internally-stored position. Any method which uses a send_gcode
@@ -128,11 +150,24 @@ impl Gcode {
         self.state
     }
 
+    fn add_state_variables(&mut self) {
+        self.gcode_substitutions.insert("curing".to_string(), self.state.curing.to_string());
+        self.gcode_substitutions.insert("z".to_string(), self.state.z.to_string());
+    }
+
 }
 
 
 #[async_trait]
 impl HardwareControl for Gcode {
+    async fn hardware_ready(&mut self) -> bool {
+        self.send_and_check_gcode(
+            self.config.status_check.clone(),
+            self.config.status_desired.clone()
+        ).await
+    }
+
+
     async fn home(&mut self) -> PhysicalState{
         self.send_gcode(self.config.home_command.clone()).await;
 
@@ -143,13 +178,11 @@ impl HardwareControl for Gcode {
         // To handle floating point precision issues, truncate to micron precision
         let z = (z*1000.0).trunc()/1000.0;
 
-        self.gcode_substitutions.insert("{z}".to_string(), z.to_string());
+        self.set_position(z);
 
         self.send_and_await_gcode(self.config.move_command.clone(), self.config.sync_message.clone()).await;
 
-        self.gcode_substitutions.remove(&"{z}".to_string());
-
-        return self.set_position(z);
+        return self.state;
     }
 
     async fn start_curing(&mut self) -> PhysicalState {
@@ -197,5 +230,17 @@ impl HardwareControl for Gcode {
 
     fn get_physical_state(&self) -> PhysicalState {
         self.state
+    }
+
+    fn add_print_variable(&mut self, variable: String, value: String) {
+        self.gcode_substitutions.insert(variable, value);
+    }
+
+    fn remove_print_variable(&mut self, variable: String) {
+        self.gcode_substitutions.remove(&variable);
+    }
+
+    fn clear_variables(&mut self) {
+        self.gcode_substitutions.clear();
     }
 }

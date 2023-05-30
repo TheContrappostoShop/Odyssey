@@ -40,6 +40,24 @@ impl<T: HardwareControl> Printer<T> {
         
         let mut pause_interv = interval(Duration::from_millis(100));
 
+        self.hardware_controller.add_print_variable(
+            "total_layers".to_string(), 
+            file.get_layer_count().to_string()
+        );
+
+        while !self.hardware_controller.hardware_ready().await {
+            log::info!("Hardware Controller not yet ready");
+            pause_interv.tick().await;
+        }
+
+        // Home kinematics and execute start_print command, reporting state in
+        // between in case of long-running commands
+        let mut physical_state = self.hardware_controller.home().await;
+        self.update_physical_state(physical_state).await;
+
+        physical_state = self.hardware_controller.start_print().await;
+        self.update_physical_state(physical_state).await;
+
         // Fetch and generate the first frame
         let mut optional_frame = Frame::from_layer(
             file.get_layer_data(0).await
@@ -59,6 +77,10 @@ impl<T: HardwareControl> Printer<T> {
                         match optional_frame {
                             // More frames exist, continue printing
                             Some(cur_frame) => {
+                                self.hardware_controller.add_print_variable(
+                                    "layer".to_string(), 
+                                    layer.to_string()
+                                );
                                 // Start a task to fetch and generate the next
                                 // frame while we're exposing the current one
                                 let gen_next_frame = tokio::spawn(
@@ -137,17 +159,11 @@ impl<T: HardwareControl> Printer<T> {
         log::info!("Starting Print");
         
         self.enter_printing_state(file_data).await;
-        // Home kinematics and execute start_print command, reporting state in
-        // between in case of long-running commands
-        let mut physical_state = self.hardware_controller.home().await;
-        self.update_physical_state(physical_state).await;
-
-        physical_state = self.hardware_controller.start_print().await;
-        self.update_physical_state(physical_state).await;
     }
 
     async fn end_print(&mut self) {
         let physical_state = self.hardware_controller.end_print().await;
+        self.hardware_controller.clear_variables();
         self.update_idle_state(physical_state).await;
         log::info!("Print complete.");
     }
@@ -380,6 +396,7 @@ pub enum Operation {
 
 #[async_trait]
 pub trait HardwareControl {
+    async fn hardware_ready(&mut self) -> bool;
     async fn home(&mut self) -> PhysicalState;
     async fn start_print(&mut self) -> PhysicalState;
     async fn end_print(&mut self) -> PhysicalState;
@@ -389,4 +406,7 @@ pub trait HardwareControl {
     async fn boot(&mut self) -> PhysicalState;
     async fn shutdown(&mut self) -> PhysicalState;
     fn get_physical_state(&self) -> PhysicalState;
+    fn add_print_variable(&mut self, variable: String, value: String);
+    fn remove_print_variable(&mut self, variable: String);
+    fn clear_variables(&mut self);
 }

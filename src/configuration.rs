@@ -23,6 +23,8 @@ pub struct GcodeConfig {
     pub cure_start: String,
     pub cure_end: String,
     pub sync_message: String,
+    pub status_check: String,
+    pub status_desired: String
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

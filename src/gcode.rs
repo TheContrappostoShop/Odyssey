@@ -167,7 +167,6 @@ impl HardwareControl for Gcode {
         ).await
     }
 
-
     async fn home(&mut self) -> PhysicalState{
         self.send_gcode(self.config.home_command.clone()).await;
 
@@ -182,32 +181,41 @@ impl HardwareControl for Gcode {
 
         self.send_and_await_gcode(self.config.move_command.clone(), self.config.sync_message.clone()).await;
 
-        return self.state;
+        self.state
+    }
+
+    async fn start_layer(&mut self, layer: usize) -> PhysicalState {
+        self.send_gcode(self.config.layer_start.clone()).await;
+
+        self.state
     }
 
     async fn start_curing(&mut self) -> PhysicalState {
+        self.set_curing(true);
+
         self.send_gcode(self.config.cure_start.clone()).await;
 
-        return self.set_curing(true);
+        self.state
     }
     
 
     async fn stop_curing(&mut self) -> PhysicalState {
+        self.set_curing(false);
         self.send_gcode(self.config.cure_end.clone()).await;
+        self.state
 
-        return self.set_curing(false);
     }
     
     async fn start_print(&mut self) -> PhysicalState {
         self.send_gcode(self.config.print_start.clone()).await;
 
-        return self.state;
+        self.state
     }
 
     async fn end_print(&mut self) -> PhysicalState{
         self.send_gcode(self.config.print_end.clone()).await;
 
-        return self.state;
+        self.state
     }
 
     async fn boot(&mut self) -> PhysicalState{
@@ -219,13 +227,13 @@ impl HardwareControl for Gcode {
 
         self.send_gcode(self.config.boot.clone()).await;
 
-        return self.state;
+        self.state
     }
 
     async fn shutdown(&mut self) -> PhysicalState{
         self.send_gcode(self.config.shutdown.clone()).await;
 
-        return self.state;
+        self.state
     }
 
     fn get_physical_state(&self) -> PhysicalState {

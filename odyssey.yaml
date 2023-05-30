@@ -24,15 +24,14 @@ gcode:
     M84
     SET_PIN PIN=led_array VALUE=0
   home_command: G28
-  move_command: |
-    G0 Z{z} F300
-    SET_PRINT_STATS_INFO CURRENT_LAYER={layer}
+  move_command: G0 Z{z} F300
   print_start: |
     SET_FAN_SPEED FAN=filter_fans SPEED=1
     SET_PRINT_STATS_INFO TOTAL_LAYER={total_layers}
   print_end: |
     G0 Z{max_z}
     SET_FAN_SPEED FAN=filter_fans SPEED=0.3
+  layer_start: SET_PRINT_STATS_INFO CURRENT_LAYER={layer}
   cure_start: SET_PIN PIN=led_array VALUE=650
   cure_end: SET_PIN PIN=led_array VALUE=0
   sync_message: Z_move_comp

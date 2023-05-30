@@ -112,6 +112,7 @@ impl<T: HardwareControl> Printer<T> {
 
     async fn print_frame(&mut self, cur_frame: Frame, layer: usize, layer_height: f32) {
         log::info!("Begin layer {}", layer);
+        self.hardware_controller.start_layer(layer).await;
         let layer_z = ((layer+1) as f32)*layer_height;
 
         let exposure_time = cur_frame.exposure_time;
@@ -401,6 +402,7 @@ pub trait HardwareControl {
     async fn start_print(&mut self) -> PhysicalState;
     async fn end_print(&mut self) -> PhysicalState;
     async fn move_z(&mut self, z: f32) -> PhysicalState;
+    async fn start_layer(&mut self, layer: usize) -> PhysicalState;
     async fn start_curing(&mut self) -> PhysicalState;
     async fn stop_curing(&mut self) -> PhysicalState;
     async fn boot(&mut self) -> PhysicalState;

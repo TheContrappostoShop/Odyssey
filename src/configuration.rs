@@ -20,6 +20,7 @@ pub struct GcodeConfig {
     pub move_command: String,
     pub print_start: String,
     pub print_end: String,
+    pub layer_start: String,
     pub cure_start: String,
     pub cure_end: String,
     pub sync_message: String,

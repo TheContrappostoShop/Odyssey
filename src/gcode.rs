@@ -109,10 +109,16 @@ impl Gcode {
         
     }
 
+    // Consume all available responses in case of ack messages before desired
     async fn check_response(&mut self, response: &String) -> bool {
-        self.transceiver.1.recv()
+        let mut has_response = self.transceiver.1.recv()
             .await.expect("Unable to receive message from channel")
-            .contains(response)
+            .contains(response);
+
+        while let Ok(resp) = self.transceiver.1.try_recv() {
+            has_response = has_response || resp.contains(response);
+        }
+        has_response
     }
 
     async fn send_and_await_gcode(&mut self, code: String, expect: String) {

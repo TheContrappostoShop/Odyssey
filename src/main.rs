@@ -4,6 +4,7 @@ use clap::Parser;
 use configuration::Configuration;
 
 use display::PrintDisplay;
+use printer::HardwareControl;
 use simple_logger::SimpleLogger;
 use tokio::{runtime::{Builder, Runtime}};
 
@@ -23,7 +24,7 @@ struct Args {
     /// Odyssey config file
     #[arg(default_value_t=String::from("./odyssey.yaml"), short, long)]
     config: String,
-    #[arg(default_value_t=String::from("INFO"), short, long)]
+    #[arg(default_value_t=String::from("DEBUG"), short, long)]
     loglevel: String
 }
 
@@ -93,8 +94,8 @@ fn build_printer(configuration: Configuration) -> Printer<Gcode> {
     let mut gcode = Gcode::new(configuration.clone(), serial);
 
 
-    gcode.add_gcode_substitution("{max_z}".to_string(), configuration.printer.max_z.to_string());
-    gcode.add_gcode_substitution("{z_lift}".to_string(), configuration.printer.z_lift.to_string());
+    gcode.add_print_variable("max_z".to_string(), configuration.printer.max_z.to_string());
+    gcode.add_print_variable("z_lift".to_string(), configuration.printer.z_lift.to_string());
 
     let display: PrintDisplay = PrintDisplay::new(
         configuration.printer.frame_buffer.clone(), 

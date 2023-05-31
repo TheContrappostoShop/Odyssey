@@ -81,7 +81,7 @@ impl Gcode {
         for caps in re.captures_iter(&code) {
             let sub = &caps["substitution"].to_string();
             if let Some(value) = self.gcode_substitutions.get(sub) {
-                parsed_code = parsed_code.replace(sub, value)
+                parsed_code = parsed_code.replace(&format!("{{{sub}}}"), value)
             } else {
                 panic!("Attempted to use gcode substitution {} in context where it was unavailable: {}", sub, code);
             }
@@ -121,17 +121,10 @@ impl Gcode {
     }
 
     async fn send_and_check_gcode(&mut self, code: String, expect: String) -> bool {
-        let mut interval = interval(Duration::from_millis(100));
-
         self.send_gcode(code).await;
 
-        for _ in 0..10 {
-            if self.check_response(&expect).await {
-                return true;
-            }
-            interval.tick().await;
-        }
-        false
+        self.check_response(&expect).await
+
     }
 
     /// Set the internally-stored position. Any method which uses a send_gcode
@@ -224,6 +217,15 @@ impl HardwareControl for Gcode {
             self.serial_port.try_clone_native().expect("Unable to clone serial connection"),
             self.transceiver.0.clone()
         ));
+
+        let mut boot_interv = interval(Duration::from_millis(1000));
+
+        log::debug!("Waiting for GCode controller..");
+        while !self.hardware_ready().await {
+            log::debug!("GCode Controller not yet ready");
+            boot_interv.tick().await;
+        }
+        log::debug!("GCode Controller ready!");
 
         self.send_gcode(self.config.boot.clone()).await;
 

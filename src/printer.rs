@@ -45,11 +45,6 @@ impl<T: HardwareControl> Printer<T> {
             file.get_layer_count().to_string()
         );
 
-        while !self.hardware_controller.hardware_ready().await {
-            log::info!("Hardware Controller not yet ready");
-            pause_interv.tick().await;
-        }
-
         // Home kinematics and execute start_print command, reporting state in
         // between in case of long-running commands
         let mut physical_state = self.hardware_controller.home().await;

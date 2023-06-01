@@ -23,5 +23,4 @@ while True:
             status_counter += 1
             os.write(master, bytes('Klipper state: Disconnect\r\n', 'utf-8'))
         else:
-            status_counter = 0
             os.write(master, bytes('Klipper state: Ready\r\n', 'utf-8'))

@@ -55,7 +55,8 @@ impl Gcode {
                     io::ErrorKind::TimedOut => {
                         continue;
                     },
-                    other_error => panic!("Error reading from serial port: {:?}", other_error),
+                    // Broken Pipe here
+                    other_error => {continue;},//panic!("Error reading from serial port: {:?}", other_error),
                 },
                 Ok(n) => {
                     if n>0 {
@@ -65,10 +66,6 @@ impl Gcode {
                 },
             };
         }
-    }
-
-    pub fn add_gcode_substitution(&mut self, key: String, value: String) {
-        self.gcode_substitutions.insert(key, value);
     }
 
 
@@ -89,14 +86,15 @@ impl Gcode {
         parsed_code
     }
 
-    async fn send_gcode(&mut self, code: String) {
+    async fn send_gcode(&mut self, code: String) -> std::io::Result<()> {
         let parsed_code = self.parse_gcode(code)+"\r\n";
         log::debug!("Executing gcode: {}", parsed_code.trim_end());
         
-        let n = self.serial_port.write(parsed_code.as_bytes()).unwrap();
+        let n = self.serial_port.write(parsed_code.as_bytes())?;
         self.serial_port.flush().expect("Unable to flush serial connection");
 
         log::trace!("Wrote {} bytes", n);
+        Ok(())
     }
 
     async fn await_response(&mut self, response: String) {
@@ -121,16 +119,17 @@ impl Gcode {
         has_response
     }
 
-    async fn send_and_await_gcode(&mut self, code: String, expect: String) {
-        self.send_gcode(code).await;
+    async fn send_and_await_gcode(&mut self, code: String, expect: String) -> std::io::Result<()> {
+        self.send_gcode(code).await?;
         self.await_response(expect).await;
+        Ok(())
     }
 
     async fn send_and_check_gcode(&mut self, code: String, expect: String) -> bool {
-        self.send_gcode(code).await;
-
-        self.check_response(&expect).await
-
+        if self.send_gcode(code).await.is_ok() {
+            return self.check_response(&expect).await;
+        }
+        false
     }
 
     /// Set the internally-stored position. Any method which uses a send_gcode
@@ -159,93 +158,86 @@ impl Gcode {
 
 #[async_trait]
 impl HardwareControl for Gcode {
-    async fn hardware_ready(&mut self) -> bool {
+    async fn initialize(&mut self) {
+        // Run the serial port listener task
+        tokio::spawn(Gcode::run_listener(
+            self.serial_port.try_clone_native().expect("Unable to clone serial connection"),
+            self.transceiver.0.clone()
+        ));
+    }
+
+    async fn is_ready(&mut self) -> bool {
         self.send_and_check_gcode(
             self.config.status_check.clone(),
             self.config.status_desired.clone()
         ).await
     }
 
-    async fn home(&mut self) -> PhysicalState{
-        self.send_gcode(self.config.home_command.clone()).await;
+    async fn home(&mut self) -> std::io::Result<PhysicalState>{
+        self.send_gcode(self.config.home_command.clone()).await?;
 
-        return self.state;
+        Ok(self.state)
     }
 
-    async fn move_z(&mut self, z: f32) -> PhysicalState {
+    async fn move_z(&mut self, z: f32) -> std::io::Result<PhysicalState> {
         // To handle floating point precision issues, truncate to micron precision
         let z = (z*1000.0).trunc()/1000.0;
 
         self.set_position(z);
 
-        self.send_and_await_gcode(self.config.move_command.clone(), self.config.sync_message.clone()).await;
+        self.send_and_await_gcode(self.config.move_command.clone(), self.config.sync_message.clone()).await?;
 
-        self.state
+        Ok(self.state)
     }
 
-    async fn start_layer(&mut self, layer: usize) -> PhysicalState {
-        self.send_gcode(self.config.layer_start.clone()).await;
+    async fn start_layer(&mut self, layer: usize) -> std::io::Result<PhysicalState> {
+        self.send_gcode(self.config.layer_start.clone()).await?;
 
-        self.state
+        Ok(self.state)
     }
 
-    async fn start_curing(&mut self) -> PhysicalState {
+    async fn start_curing(&mut self) -> std::io::Result<PhysicalState> {
         self.set_curing(true);
 
-        self.send_gcode(self.config.cure_start.clone()).await;
+        self.send_gcode(self.config.cure_start.clone()).await?;
 
-        self.state
+        Ok(self.state)
     }
     
 
-    async fn stop_curing(&mut self) -> PhysicalState {
+    async fn stop_curing(&mut self) -> std::io::Result<PhysicalState> {
         self.set_curing(false);
-        self.send_gcode(self.config.cure_end.clone()).await;
-        self.state
+        self.send_gcode(self.config.cure_end.clone()).await?;
+        Ok(self.state)
 
     }
     
-    async fn start_print(&mut self) -> PhysicalState {
-        self.send_gcode(self.config.print_start.clone()).await;
+    async fn start_print(&mut self) -> std::io::Result<PhysicalState> {
+        self.send_gcode(self.config.print_start.clone()).await?;
 
-        self.state
+        Ok(self.state)
     }
 
-    async fn end_print(&mut self) -> PhysicalState{
-        self.send_gcode(self.config.print_end.clone()).await;
+    async fn end_print(&mut self) -> std::io::Result<PhysicalState>{
+        self.send_gcode(self.config.print_end.clone()).await?;
 
-        self.state
+        Ok(self.state)
     }
 
-    async fn boot(&mut self) -> PhysicalState{
-        // Run the serial port listener task
-        tokio::spawn(Gcode::run_listener(
-            self.serial_port.try_clone_native().expect("Unable to clone serial connection"),
-            self.transceiver.0.clone()
-        ));
+    async fn boot(&mut self) -> std::io::Result<PhysicalState>{
+        self.send_gcode(self.config.boot.clone()).await?;
 
-        let mut boot_interv = interval(Duration::from_millis(1000));
-
-        log::debug!("Waiting for GCode controller..");
-        while !self.hardware_ready().await {
-            log::debug!("GCode Controller not yet ready");
-            boot_interv.tick().await;
-        }
-        log::debug!("GCode Controller ready!");
-
-        self.send_gcode(self.config.boot.clone()).await;
-
-        self.state
+        Ok(self.state)
     }
 
-    async fn shutdown(&mut self) -> PhysicalState{
-        self.send_gcode(self.config.shutdown.clone()).await;
+    async fn shutdown(&mut self) -> std::io::Result<()>{
+        self.send_gcode(self.config.shutdown.clone()).await?;
 
-        self.state
+        Ok(())
     }
 
-    fn get_physical_state(&self) -> PhysicalState {
-        self.state
+    fn get_physical_state(&self) -> std::io::Result<PhysicalState> {
+        Ok(self.state)
     }
 
     fn add_print_variable(&mut self, variable: String, value: String) {

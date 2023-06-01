@@ -62,6 +62,12 @@ async fn cancel_print(Data(operation_sender): Data<&mpsc::Sender<Operation>>) ->
 }
 
 #[handler]
+async fn shutdown(Data(operation_sender): Data<&mpsc::Sender<Operation>>) -> Result<()> {
+    operation_sender.send(Operation::Shutdown { }).await
+        .map_err(ServiceUnavailable)
+}
+
+#[handler]
 async fn get_status(Data(state_ref): Data<&Arc<RwLock<PrinterState>>>) -> Json<PrinterState> {
     poem::web::Json(state_ref.read().await.clone())
 }
@@ -325,6 +331,7 @@ pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<
         .at("/print/cancel", post(cancel_print))
         .at("/print/pause", post(pause_print))
         .at("/print/resume", post(resume_print))
+        .at("/shutdown", post(shutdown))
         .at("/files", get(get_files).post(upload_file))
         .at("/files/:location/:file_name", get(get_file).delete(delete_file))
         .data(operation_sender)

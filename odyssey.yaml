@@ -26,6 +26,7 @@ gcode:
   home_command: G28
   move_command: G0 Z{z} F300
   print_start: |
+    G28
     SET_FAN_SPEED FAN=filter_fans SPEED=1
     SET_PRINT_STATS_INFO TOTAL_LAYER={total_layers}
   print_end: |

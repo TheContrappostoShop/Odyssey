@@ -320,7 +320,7 @@ impl<T: HardwareControl> Printer<T> {
         log::info!("Shutting down.");
         // If hardware still running, execute shutdown commands
         if self.hardware_controller.is_ready().await {
-            if let Ok(_) = self.hardware_controller.shutdown().await {
+            if (self.hardware_controller.shutdown().await).is_ok() {
                 log::info!("Shut down gcode executed successfully")
             }
             else {
@@ -380,10 +380,7 @@ impl<T: HardwareControl> Printer<T> {
         let mut op_result = self.operation_channel.1.try_recv();
 
         while let Ok(operation) = op_result {
-            match operation {
-                Operation::QueryState => self.send_status().await,
-                _ => (),
-            };
+            if let Operation::QueryState = operation { self.send_status().await }
             op_result = self.operation_channel.1.try_recv();
         }
     }

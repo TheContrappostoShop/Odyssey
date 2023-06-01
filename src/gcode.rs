@@ -56,7 +56,7 @@ impl Gcode {
                         continue;
                     },
                     // Broken Pipe here
-                    other_error => {continue;},//panic!("Error reading from serial port: {:?}", other_error),
+                    _other_error => {continue;},//panic!("Error reading from serial port: {:?}", other_error),
                 },
                 Ok(n) => {
                     if n>0 {
@@ -190,7 +190,7 @@ impl HardwareControl for Gcode {
         Ok(self.state)
     }
 
-    async fn start_layer(&mut self, layer: usize) -> std::io::Result<PhysicalState> {
+    async fn start_layer(&mut self, _layer: usize) -> std::io::Result<PhysicalState> {
         self.send_gcode(self.config.layer_start.clone()).await?;
 
         Ok(self.state)

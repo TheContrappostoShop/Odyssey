@@ -35,7 +35,8 @@ gcode:
   layer_start: SET_PRINT_STATS_INFO CURRENT_LAYER={layer}
   cure_start: SET_PIN PIN=led_array VALUE=650
   cure_end: SET_PIN PIN=led_array VALUE=0
-  sync_message: Z_move_comp
+  move_sync: Z_move_comp
+  move_timeout: 60
   status_check: status
   status_desired: "Klipper state: Ready"
 

@@ -23,7 +23,8 @@ pub struct GcodeConfig {
     pub layer_start: String,
     pub cure_start: String,
     pub cure_end: String,
-    pub sync_message: String,
+    pub move_sync: String,
+    pub move_timeout: usize,
     pub status_check: String,
     pub status_desired: String
 }

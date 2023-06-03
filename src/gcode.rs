@@ -1,12 +1,13 @@
 use core::panic;
-use std::io::{self, Write, BufReader, BufRead};
+use std::io::{self, Write, BufReader, BufRead, Error, ErrorKind};
 use std::collections::HashMap;
+use std::time;
 
 use regex::Regex;
 use async_trait::async_trait;
 use serialport::{TTYPort, SerialPortBuilder, SerialPort, ClearBuffer};
 use tokio::sync::mpsc::{self, Sender, Receiver};
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, Duration, sleep};
 
 use crate::configuration::{GcodeConfig, Configuration};
 use crate::printer::{HardwareControl, PhysicalState};
@@ -94,17 +95,24 @@ impl Gcode {
         self.serial_port.flush().expect("Unable to flush serial connection");
 
         log::trace!("Wrote {} bytes", n);
+        // Force a delay between commands 
+        sleep(Duration::from_millis(100)).await;
         Ok(())
     }
 
-    async fn await_response(&mut self, response: String) {
+    async fn await_response(&mut self, response: String, timeoutSeconds: usize) -> std::io::Result<()> {
         log::trace!("Expecting response: {}", response);
+        let mut interval = interval(Duration::from_millis(100));
+        let intervals = 10*timeoutSeconds;
 
-        while !self.check_response(&response).await {
-            continue;
+        for _ in 0..intervals {
+            if self.check_response(&response).await {
+                log::trace!("Expected response received");
+                return Ok(());
+            }
+            else {interval.tick().await;}
         }
-        log::trace!("Expected response received");
-        
+        Err(Error::new(ErrorKind::TimedOut, "Timed out awaiting gcode response"))
     }
 
     // Consume all available responses in case of ack messages before desired
@@ -119,9 +127,9 @@ impl Gcode {
         has_response
     }
 
-    async fn send_and_await_gcode(&mut self, code: String, expect: String) -> std::io::Result<()> {
+    async fn send_and_await_gcode(&mut self, code: String, expect: String, timeoutSeconds: usize) -> std::io::Result<()> {
         self.send_gcode(code).await?;
-        self.await_response(expect).await;
+        self.await_response(expect, timeoutSeconds).await?;
         Ok(())
     }
 
@@ -185,7 +193,11 @@ impl HardwareControl for Gcode {
 
         self.set_position(z);
 
-        self.send_and_await_gcode(self.config.move_command.clone(), self.config.sync_message.clone()).await?;
+        self.send_and_await_gcode(
+            self.config.move_command.clone(),
+            self.config.move_sync.clone(),
+            self.config.move_timeout
+        ).await?;
 
         Ok(self.state)
     }

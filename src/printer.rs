@@ -356,7 +356,7 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     async fn shutdown_event_loop(&mut self) {
-        let mut shutdown_interv = interval(Duration::from_millis(1000));
+        let mut shutdown_interv = interval(Duration::from_millis(10000));
 
         loop {
             self.shutdown_operation_handler().await;

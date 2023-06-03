@@ -317,7 +317,7 @@ async fn run_state_listener(mut state_receiver: broadcast::Receiver<PrinterState
 
 pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<Operation>, state_receiver: broadcast::Receiver<PrinterState>) {
     
-    let state_ref = Arc::new(RwLock::new(PrinterState::Shutdown));
+    let state_ref = Arc::new(RwLock::new(PrinterState::Shutdown { }));
     
     tokio::spawn(run_state_listener(
         state_receiver,

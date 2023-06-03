@@ -1,7 +1,6 @@
 use core::panic;
 use std::io::{self, Write, BufReader, BufRead, Error, ErrorKind};
 use std::collections::HashMap;
-use std::time;
 
 use regex::Regex;
 use async_trait::async_trait;
@@ -100,10 +99,10 @@ impl Gcode {
         Ok(())
     }
 
-    async fn await_response(&mut self, response: String, timeoutSeconds: usize) -> std::io::Result<()> {
+    async fn await_response(&mut self, response: String, timeout_seconds: usize) -> std::io::Result<()> {
         log::trace!("Expecting response: {}", response);
         let mut interval = interval(Duration::from_millis(100));
-        let intervals = 10*timeoutSeconds;
+        let intervals = 10*timeout_seconds;
 
         for _ in 0..intervals {
             if self.check_response(&response).await {
@@ -127,9 +126,9 @@ impl Gcode {
         has_response
     }
 
-    async fn send_and_await_gcode(&mut self, code: String, expect: String, timeoutSeconds: usize) -> std::io::Result<()> {
+    async fn send_and_await_gcode(&mut self, code: String, expect: String, timeout_seconds: usize) -> std::io::Result<()> {
         self.send_gcode(code).await?;
-        self.await_response(expect, timeoutSeconds).await?;
+        self.await_response(expect, timeout_seconds).await?;
         Ok(())
     }
 

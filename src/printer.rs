@@ -204,7 +204,7 @@ impl<T: HardwareControl> Printer<T> {
         match self.state {
             PrinterState::Idle { physical_state } => physical_state,
             PrinterState::Printing { physical_state, .. } => physical_state,
-            PrinterState::Shutdown => {
+            PrinterState::Shutdown { } => {
                 PhysicalState {
                     z: f32::MAX,
                     curing: false
@@ -242,7 +242,7 @@ impl<T: HardwareControl> Printer<T> {
             PrinterState::Printing { .. } => {
                 log::debug!("Already in printing state!");
             },
-            PrinterState::Shutdown => {
+            PrinterState::Shutdown { } => {
                 log::debug!("Cannot start print, Odyssey shutdown");
             }
         }
@@ -256,7 +256,7 @@ impl<T: HardwareControl> Printer<T> {
             PrinterState::Idle { ref mut physical_state } => {
                 *physical_state = new_physical_state;
             }
-            PrinterState::Shutdown => (),
+            PrinterState::Shutdown { } => (),
         }
         self.send_status().await;
     }
@@ -327,7 +327,7 @@ impl<T: HardwareControl> Printer<T> {
                 log::info!("Unable to execute shutdown gcode")
             }
         }
-        self.state = PrinterState::Shutdown;
+        self.state = PrinterState::Shutdown { };
     }
 
     pub async fn get_operation_sender(&mut self) -> mpsc::Sender<Operation> {
@@ -350,7 +350,7 @@ impl<T: HardwareControl> Printer<T> {
             match self.state {
                 PrinterState::Idle { .. } => self.idle_event_loop().await,
                 PrinterState::Printing { .. } => self.print_event_loop().await,
-                PrinterState::Shutdown => self.shutdown_event_loop().await,
+                PrinterState::Shutdown { } => self.shutdown_event_loop().await,
             }
         }
     }
@@ -362,7 +362,7 @@ impl<T: HardwareControl> Printer<T> {
             self.shutdown_operation_handler().await;
 
             match self.state {
-                PrinterState::Shutdown => {
+                PrinterState::Shutdown { } => {
                     if self.hardware_controller.is_ready().await {
                         self.boot().await;
                     }
@@ -458,7 +458,7 @@ pub struct PhysicalState {
 pub enum PrinterState {
     Printing { file_data: FileData, paused: bool, layer: usize, physical_state: PhysicalState },
     Idle { physical_state: PhysicalState },
-    Shutdown,
+    Shutdown { },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

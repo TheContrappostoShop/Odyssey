@@ -5,6 +5,7 @@ use tokio::sync::{mpsc, broadcast};
 use crate::printfile::FileData;
 use crate::printfile::Layer;
 use crate::printfile::PrintFile;
+use crate::printfile::PrintMetadata;
 use crate::sl1::*;
 use crate::configuration::*;
 use crate::display::*;
@@ -177,7 +178,8 @@ impl<T: HardwareControl> Printer<T> {
     pub async fn start_print(&mut self, file_data: FileData) {
         log::info!("Starting Print");
         
-        self.enter_printing_state(file_data).await;
+        let print_data = Sl1::from_file(file_data).get_metadata();
+        self.enter_printing_state(print_data).await;
     }
 
     async fn end_print(&mut self) {
@@ -222,18 +224,18 @@ impl<T: HardwareControl> Printer<T> {
 
     fn get_file_data(&self) -> Option<FileData> {
         match &self.state {
-            PrinterState::Printing { file_data, .. } => Some(file_data.clone()),
+            PrinterState::Printing { print_data, .. } => Some(print_data.file_data.clone()),
             _ => None,
         }
     }
 
-    async fn enter_printing_state(&mut self, file_data: FileData) {
+    async fn enter_printing_state(&mut self, print_data: PrintMetadata) {
         log::info!("Entering printing state");
         match self.state {
             PrinterState::Idle { physical_state } => {
                 log::debug!("Transitioning from Idle State");
                 self.state = PrinterState::Printing { 
-                    file_data,
+                    print_data,
                     paused: false,
                     layer: 0,
                     physical_state
@@ -456,7 +458,7 @@ pub struct PhysicalState {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PrinterState {
-    Printing { file_data: FileData, paused: bool, layer: usize, physical_state: PhysicalState },
+    Printing { print_data: PrintMetadata, paused: bool, layer: usize, physical_state: PhysicalState },
     Idle { physical_state: PhysicalState },
     Shutdown { },
 }

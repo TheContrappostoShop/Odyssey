@@ -56,7 +56,7 @@ impl Gcode {
                         continue;
                     },
                     // Broken Pipe here
-                    _other_error => {continue;},//panic!("Error reading from serial port: {:?}", other_error),
+                    other_error => panic!("Error reading from serial port: {:?}", other_error),
                 },
                 Ok(n) => {
                     if n>0 {

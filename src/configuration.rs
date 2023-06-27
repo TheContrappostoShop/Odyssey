@@ -9,7 +9,11 @@ pub struct PrinterConfig {
     pub fb_bit_depth: u8,
     pub fb_chunk_size: u8,
     pub max_z: f32,
-    pub z_lift: f32,
+    pub default_lift: f32,
+    pub default_up_speed: f32,
+    pub default_down_speed: f32,
+    pub default_wait_before_exposure: f32,
+    pub default_wait_after_exposure: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

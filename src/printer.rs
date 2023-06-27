@@ -33,9 +33,18 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     pub async fn print_event_loop(&mut self) {
-        let mut file = Sl1::from_file(self.get_file_data().unwrap());
+        let mut file: Box<dyn PrintFile + Send> = Box::new(Sl1::from_file(self.get_file_data().unwrap()));
 
         let layer_height = file.get_layer_height();
+
+        // Get movement values from file, or configured defaults
+        let lift = file.get_lift().unwrap_or(self.config.default_lift);
+        let up_speed = file.get_up_speed().unwrap_or(self.config.default_up_speed);
+        let down_speed = file.get_down_speed().unwrap_or(self.config.default_down_speed);
+
+        let wait_before_exposure = file.get_wait_before_exposure().unwrap_or(self.config.default_wait_before_exposure);
+        let wait_after_exposure = file.get_wait_after_exposure().unwrap_or(self.config.default_wait_after_exposure);
+        
         
         let mut pause_interv = interval(Duration::from_millis(100));
 
@@ -80,7 +89,16 @@ impl<T: HardwareControl> Printer<T> {
 
                                 // Print the current frame by moving into
                                 // position and curing
-                                self.print_frame(cur_frame, layer, layer_height).await;
+                                self.print_frame(
+                                    cur_frame,
+                                    layer,
+                                    layer_height,
+                                    lift,
+                                    up_speed,
+                                    down_speed,
+                                    wait_before_exposure,
+                                    wait_after_exposure
+                                ).await;
                                 
                                 // Await generation of the next frame
                                 optional_frame = gen_next_frame.await
@@ -99,17 +117,31 @@ impl<T: HardwareControl> Printer<T> {
         }
     }
 
-    async fn print_frame(&mut self, cur_frame: Frame, layer: usize, layer_height: f32) {
+    async fn print_frame(&mut self,
+        cur_frame: Frame,
+        layer: usize,
+        layer_height: f32,
+        lift: f32,
+        up_speed: f32,
+        down_speed: f32,
+        wait_before_exposure: f32,
+        wait_after_exposure: f32
+    ) {
         log::info!("Begin layer {}", layer);
         self.wrapped_start_layer(layer).await;
         let layer_z = ((layer+1) as f32)*layer_height;
+        //let lift_z = layer_z+
 
         let exposure_time = cur_frame.exposure_time;
 
         // Move the plate up first, then down into position
         log::info!("Moving to layer position {}", layer_z);
-        self.wrapped_move(layer_z+self.config.z_lift).await;
-        self.wrapped_move(layer_z).await;
+    
+        self.wrapped_move(layer_z+lift, up_speed).await;
+        self.wrapped_move(layer_z, down_speed).await;
+
+        // Wait for configured time before curing
+        sleep(Duration::from_secs_f32(wait_before_exposure));
 
         // Display the current frame to the LCD
         log::info!("Loading layer to display");
@@ -120,6 +152,9 @@ impl<T: HardwareControl> Printer<T> {
         self.wrapped_start_cure().await;
         sleep(Duration::from_secs_f32(exposure_time)).await;
         self.wrapped_stop_cure().await;
+        
+        // Wait for configured time after curing
+        sleep(Duration::from_secs_f32(wait_after_exposure));
     }
 
     async fn wrapped_start_print(&mut self) {
@@ -141,8 +176,8 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     // Move and update printer state
-    async fn wrapped_move(&mut self, z: f32) {
-        if let Ok(physical_state) = self.hardware_controller.move_z(z).await {
+    async fn wrapped_move(&mut self, z: f32, speed: f32) {
+        if let Ok(physical_state) = self.hardware_controller.move_z(z, speed).await {
             self.update_physical_state(physical_state).await;
         }
         else {
@@ -408,7 +443,7 @@ impl<T: HardwareControl> Printer<T> {
             match operation {
                 Operation::QueryState => self.send_status().await,
                 Operation::StartPrint { file_data } => self.start_print(file_data).await,
-                Operation::ManualMove { z } => self.wrapped_move(z).await,
+                Operation::ManualMove { z } => self.wrapped_move(z, self.config.default_up_speed).await,
                 Operation::ManualCure { cure } => {
                     if cure {
                         self.wrapped_start_cure().await;
@@ -483,7 +518,7 @@ pub trait HardwareControl {
     async fn home(&mut self) -> std::io::Result<PhysicalState>;
     async fn start_print(&mut self) -> std::io::Result<PhysicalState>;
     async fn end_print(&mut self) -> std::io::Result<PhysicalState>;
-    async fn move_z(&mut self, z: f32) -> std::io::Result<PhysicalState>;
+    async fn move_z(&mut self, z: f32, speed: f32) -> std::io::Result<PhysicalState>;
     async fn start_layer(&mut self, layer: usize) -> std::io::Result<PhysicalState>;
     async fn start_curing(&mut self) -> std::io::Result<PhysicalState>;
     async fn stop_curing(&mut self) -> std::io::Result<PhysicalState>;

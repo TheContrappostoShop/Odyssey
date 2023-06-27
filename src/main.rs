@@ -95,7 +95,7 @@ fn build_printer(configuration: Configuration) -> Printer<Gcode> {
 
 
     gcode.add_print_variable("max_z".to_string(), configuration.printer.max_z.to_string());
-    gcode.add_print_variable("z_lift".to_string(), configuration.printer.z_lift.to_string());
+    gcode.add_print_variable("z_lift".to_string(), configuration.printer.default_lift.to_string());
 
     let display: PrintDisplay = PrintDisplay::new(
         configuration.printer.frame_buffer.clone(), 

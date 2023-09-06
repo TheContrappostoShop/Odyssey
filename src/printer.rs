@@ -141,7 +141,8 @@ impl<T: HardwareControl> Printer<T> {
         self.wrapped_move(layer_z, down_speed).await;
 
         // Wait for configured time before curing
-        sleep(Duration::from_secs_f32(wait_before_exposure));
+        log::info!("Waiting for {}s before cure", wait_before_exposure);
+        sleep(Duration::from_secs_f32(wait_before_exposure)).await;
 
         // Display the current frame to the LCD
         log::info!("Loading layer to display");
@@ -154,7 +155,8 @@ impl<T: HardwareControl> Printer<T> {
         self.wrapped_stop_cure().await;
         
         // Wait for configured time after curing
-        sleep(Duration::from_secs_f32(wait_after_exposure));
+        log::info!("Waiting for {}s after cure", wait_after_exposure);
+        sleep(Duration::from_secs_f32(wait_after_exposure)).await;
     }
 
     async fn wrapped_start_print(&mut self) {

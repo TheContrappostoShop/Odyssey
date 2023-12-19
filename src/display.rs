@@ -29,7 +29,8 @@ impl Frame {
 }
 
 pub struct PrintDisplay {
-    pub frame_buffer: Framebuffer,
+    pub frame_buffer: Option<Framebuffer>,
+    pub fb_path: String,
     pub bit_depth: u8,
     pub chunk_size: u8,
 }
@@ -69,7 +70,25 @@ impl PrintDisplay {
         if frame.bit_depth!=self.bit_depth {
             frame = self.re_encode(frame);
         }
-        self.frame_buffer.write_frame(&frame.buffer);
+        if self.frame_buffer.is_some() {
+            self.frame_buffer.as_mut().unwrap().write_frame(&frame.buffer);
+        }
+    }
+
+    pub fn new(fb_path: String, bit_depth: u8, chunk_size: u8) -> PrintDisplay {
+        PrintDisplay {
+            frame_buffer: Framebuffer::new(fb_path.clone()).ok(),
+            fb_path,
+            bit_depth,
+            chunk_size
+        }
+
+    }
+}
+
+impl Clone for PrintDisplay {
+    fn clone(&self) -> Self {
+        Self::new(self.fb_path.clone(), self.bit_depth, self.chunk_size) 
     }
 }
 

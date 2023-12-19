@@ -1,39 +1,92 @@
-//#[macro_use] extern crate rocket;
+use std::str::FromStr;
+
 use clap::Parser;
 use configuration::Configuration;
 
 use display::PrintDisplay;
-use framebuffer::Framebuffer;
-use tokio::runtime::Builder;
+use printer::HardwareControl;
+use simple_logger::SimpleLogger;
+use tokio::{runtime::{Builder, Runtime}};
 
 use crate::{printer::Printer, gcode::Gcode};
 
-//mod api;
+mod api;
 mod configuration;
 mod sl1;
 mod display;
 mod printer;
 mod gcode;
+mod printfile;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Sliced model, in .sl1 format via PrusaSlicer
-    #[arg(short, long)]
-    file: Option<String>,
-
     /// Odyssey config file
     #[arg(default_value_t=String::from("./odyssey.yaml"), short, long)]
-    config: String
+    config: String,
+    #[arg(default_value_t=String::from("DEBUG"), short, long)]
+    loglevel: String
 }
 
-
 fn main() {
-    let args = Args::parse();
 
-    let configuration: Configuration = configuration::Configuration::load(args.config)
-        .expect("Config could not be parsed. See example odyssey.yaml for expected fields:");
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_panic(info);
+        std::process::exit(1);
+    }));
 
+    let args = parse_cli();
+
+    SimpleLogger::new()
+        .with_level(
+            log::LevelFilter::from_str(&args.loglevel)
+                .expect("Unable to parse loglevel")
+        ).init().unwrap();
+
+    log::info!("Starting Odyssey");
+
+    let configuration = parse_config(args.config);
+
+    let mut printer = build_printer(configuration.clone());
+
+    let runtime = build_runtime();
+    
+    runtime.block_on(async {
+        let sender = printer.get_operation_sender().await.clone();
+        let receiver = printer.get_status_receiver().await;
+
+        tokio::spawn( async move { printer.start_statemachine().await });
+
+        api::start_api(
+            configuration.api, 
+            sender,
+                receiver
+        ).await;
+    });
+}
+
+fn build_runtime() -> Runtime {
+    Builder::new_multi_thread()
+        .worker_threads(4)
+        .thread_name("odyssey-worker")
+        .thread_stack_size(3 * 1024 * 1024)
+        .enable_time()
+        .enable_io()
+        .build()
+        .expect("Unable to start Tokio runtime")
+}
+
+fn parse_cli() -> Args {
+    Args::parse()
+}
+
+fn parse_config(config_file: String) -> Configuration {
+    configuration::Configuration::load(config_file)
+        .expect("Config could not be parsed. See example odyssey.yaml for expected fields:")
+}
+
+fn build_printer(configuration: Configuration) -> Printer<Gcode> {
     let serial = serialport::new(
         configuration.printer.serial.clone(), configuration.printer.baudrate
     );
@@ -41,42 +94,18 @@ fn main() {
     let mut gcode = Gcode::new(configuration.clone(), serial);
 
 
-    gcode.add_gcode_substitution("{max_z}".to_string(), configuration.printer.max_z.to_string());
+    gcode.add_print_variable("max_z".to_string(), configuration.printer.max_z.to_string());
+    gcode.add_print_variable("z_lift".to_string(), configuration.printer.default_lift.to_string());
 
-    gcode.add_gcode_substitution("{z_lift}".to_string(), configuration.printer.z_lift.to_string());
+    let display: PrintDisplay = PrintDisplay::new(
+        configuration.printer.frame_buffer.clone(), 
+        configuration.printer.fb_bit_depth, 
+        configuration.printer.fb_chunk_size
+    );
 
-    let display: PrintDisplay = PrintDisplay{
-        frame_buffer: Framebuffer::new(configuration.printer.frame_buffer.clone()).unwrap(),
-        bit_depth: configuration.printer.fb_bit_depth,
-        chunk_size: configuration.printer.fb_chunk_size,
-    };
-
-    let mut printer: Printer<Gcode> = Printer{
-        config: configuration.printer,
+    Printer::new(
+        configuration.printer,
         display,
-        hardware_controller: gcode,
-    };
-    
-    if args.file.is_some() {
-        let print_file = args.file.unwrap();
-
-        println!("Starting Odyssey in CLI mode, printing {}", print_file);
-
-        // build runtime
-        let runtime = Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name("odyssey-worker")
-            .thread_stack_size(3 * 1024 * 1024)
-            .enable_time()
-            .enable_io()
-            .build()
-            .unwrap();
-
-        runtime.block_on( async {
-            printer.boot().await;
-            printer.print(print_file).await;
-            printer.shutdown().await;
-        });
-
-    }
+        gcode,
+    )
 }

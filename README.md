@@ -10,28 +10,59 @@ it for the first time, and don't print unattended.**
 
 ## How To Use Odyssey
 
-### CLI
-After [installing](#installation) Odyssey, you need only run the executable on
-your RPi in order to start a print.
+### Direct API Calls
+After [installing](#installation) Odyssey, and running the program (ideally as
+a service), you can begin interacting with it via the REST API, running on port
+12357 by default. HTTP requests can be made with your tool of choice (such as
+cURL), or using the provided `apiHelper.py` python script. In addition to a
+simpler command line interface, with script also provides some easy to follow
+documentation of the available endpoints. See below for further details.
 
 Example Usage:
 ```
-./odyssey --config odyssey.yaml --file sliced_model.sl1
+./apiHelper.py start Local sliced_model.sl1
 ```
 
 Command help:
 ```
-Usage: odyssey [OPTIONS]
+usage: apiHelper.py [-h] [-u URL]  ...
 
-Options:
-  -f, --file <FILE>      Sliced model, in .sl1 format via PrusaSlicer
-  -c, --config <CONFIG>  Odyssey config file [default: ./odyssey.yaml]
-  -h, --help             Print help
-  -V, --version          Print version
+This script provides an easier way to interact with the Odyssey API from a local context, such as Klipper Macros or the command line.
+
+optional arguments:
+  -h, --help         show this help message and exit
+  -u URL, --url URL
+
+API Endpoints:
+  Valid CLI Endpoints
+
+  
+    start            Start printing the specified file
+    cancel           cancel the current print (at the end of the current layer)
+    pause            Pause the current print (at the end of the current layer)
+    resume           Resume a previously paused print
+    status           Return the current status from Odyssey
+    manual_control   Move the z axis of the printer, or toggle curing
 ```
 
 ### Mainsail Integration
-> Coming Soon!
+While work on Orion continues, we have implemented a temporary integration with
+the well-establish Mainsail UI for Klipper. This provides an easy-to-use web
+interface, accessible by typing your RPi's IP address into your favorite web
+browser's address bar. For more information, see
+[Mainsail's documentation](https://docs.mainsail.xyz/).
+
+The Odyssey integration hijacks the normal pause/resume/stop functionality of
+Mainsail, as well as allowing you to start prints directly from the web ui.
+
+When you upload a `.sl1` file (or other supported file type), a fake `.gcode`
+file is generated to represent that print. When you select that file in Mainsail,
+that file request is intercepted, and Odyssey is told to begin printing the
+corresponding `.sl` file. 
+
+With the complexity of the Mainsail integration, and all of the services and
+files involved, it is *highly* suggested that you follow the
+[easy install](#easy-install) process and use our prebuilt OS image. 
 
 ### Orion UI
 > Coming Soon!
@@ -40,8 +71,9 @@ Options:
 
 ### Easy Install
 
-For a fully configured Raspberry Pi Installation of Odyssey and Klipper, see the
-[PrometheusOS](https://github.com/TheContrappostoShop/PrometheusOSA#odyssey-variant)
+For a fully configured Raspberry Pi Installation of Odyssey, Klipper, and
+Mainsail, see the
+[PrometheusOS](https://github.com/TheContrappostoShop/PrometheusOS#odyssey-variant)
 custom RPi image.
 
 ### Manual Install
@@ -51,9 +83,10 @@ If you do not wish to use the custom RPi image, you can set up
 
 To install Odyssey on your Raspberry Pi, simply download the latest release
 [here](https://github.com/TheContrappostoShop/Odyssey/releases) and unpack it
-on your device. The provided tar.gz archive will contain the Odyssey binary, and
-the default odyssey.yaml configuration file. For more information on how to
-configure Odyssey, see [Configuraion](#configuration) below.
+on your device. The provided tar.gz archive will contain the Odyssey binary, the
+default odyssey.yaml configuration file, and an API helper script. For more
+information on how to configure Odyssey, see [Configuraion](#configuration)
+below.
 
 For the Klipper installation, see the
 [Prometheus Config](https://github.com/TheContrappostoShop/Prometheus_Config/#manual-install)

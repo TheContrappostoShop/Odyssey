@@ -1,12 +1,12 @@
 use core::panic;
-use std::io::{self, Write, BufReader, BufRead};
+use std::io::{self, Write, BufReader, BufRead, Error, ErrorKind};
 use std::collections::HashMap;
 
 use regex::Regex;
 use async_trait::async_trait;
 use serialport::{TTYPort, SerialPortBuilder, SerialPort, ClearBuffer};
 use tokio::sync::mpsc::{self, Sender, Receiver};
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, Duration, sleep};
 
 use crate::configuration::{GcodeConfig, Configuration};
 use crate::printer::{HardwareControl, PhysicalState};
@@ -55,11 +55,12 @@ impl Gcode {
                     io::ErrorKind::TimedOut => {
                         continue;
                     },
+                    // Broken Pipe here
                     other_error => panic!("Error reading from serial port: {:?}", other_error),
                 },
                 Ok(n) => {
                     if n>0 {
-                        println!("Read {} bytes from serial: {}", n, read_string.trim_end());
+                        log::debug!("Read {} bytes from serial: {}", n, read_string.trim_end());
                         sender.send(read_string).await.expect("Unable to send message to channel");
                     }
                 },
@@ -67,49 +68,75 @@ impl Gcode {
         }
     }
 
-    pub fn add_gcode_substitution(&mut self, key: String, value: String) {
-        self.gcode_substitutions.insert(key, value);
-    }
 
-
-    fn parse_gcode(&self, code: String) -> String {
-        let re: Regex = Regex::new(r"\{(\w*)\}").unwrap();
+    fn parse_gcode(&mut self, code: String) -> String {
+        let re: Regex = Regex::new(r"\{(?P<substitution>\w*)\}").unwrap();
         let mut parsed_code = code.clone();
 
-        for sub in re.find_iter(&code) {
-            if let Some(value) = self.gcode_substitutions.get(sub.as_str()) {
-                parsed_code = parsed_code.replace(sub.as_str(), value)
+        self.add_state_variables();
+
+        for caps in re.captures_iter(&code) {
+            let sub = &caps["substitution"].to_string();
+            if let Some(value) = self.gcode_substitutions.get(sub) {
+                parsed_code = parsed_code.replace(&format!("{{{sub}}}"), value)
             } else {
-                panic!("Attempted to use gcode substitution {} in context where it was unavailable: {}", sub.as_str(), code);
+                panic!("Attempted to use gcode substitution {} in context where it was unavailable: {}", sub, code);
             }
         }
         parsed_code
     }
 
-    async fn send_gcode(&mut self, code: String) {
+    async fn send_gcode(&mut self, code: String) -> std::io::Result<()> {
         let parsed_code = self.parse_gcode(code)+"\r\n";
-        println!("Executing gcode: {}", parsed_code.trim_end());
+        log::debug!("Executing gcode: {}", parsed_code.trim_end());
         
-        let n = self.serial_port.write(parsed_code.as_bytes()).unwrap();
+        let n = self.serial_port.write(parsed_code.as_bytes())?;
         self.serial_port.flush().expect("Unable to flush serial connection");
 
-        println!("Wrote {} bytes", n);
+        log::trace!("Wrote {} bytes", n);
+        // Force a delay between commands 
+        sleep(Duration::from_millis(100)).await;
+        Ok(())
     }
 
-    async fn await_response(&mut self, response: String) {
-        let mut msg = String::new();
-        println!("Expecting response: {}", response);
+    async fn await_response(&mut self, response: String, timeout_seconds: usize) -> std::io::Result<()> {
+        log::trace!("Expecting response: {}", response);
+        let mut interval = interval(Duration::from_millis(100));
+        let intervals = 10*timeout_seconds;
 
-        while !msg.contains(response.as_str()) {
-            msg = self.transceiver.1.recv().await.expect("Unable to receive message from channel");
+        for _ in 0..intervals {
+            if self.check_response(&response).await {
+                log::trace!("Expected response received");
+                return Ok(());
+            }
+            else {interval.tick().await;}
         }
-        println!("Expected response received");
-        
+        Err(Error::new(ErrorKind::TimedOut, "Timed out awaiting gcode response"))
     }
 
-    async fn send_and_await_gcode(&mut self, code: String, expect: String) {
-        self.send_gcode(code).await;
-        self.await_response(expect).await;
+    // Consume all available responses in case of ack messages before desired
+    async fn check_response(&mut self, response: &String) -> bool {
+        let mut has_response = self.transceiver.1.recv()
+            .await.expect("Unable to receive message from channel")
+            .contains(response);
+
+        while let Ok(resp) = self.transceiver.1.try_recv() {
+            has_response = has_response || resp.contains(response);
+        }
+        has_response
+    }
+
+    async fn send_and_await_gcode(&mut self, code: String, expect: String, timeout_seconds: usize) -> std::io::Result<()> {
+        self.send_gcode(code).await?;
+        self.await_response(expect, timeout_seconds).await?;
+        Ok(())
+    }
+
+    async fn send_and_check_gcode(&mut self, code: String, expect: String) -> bool {
+        if self.send_gcode(code).await.is_ok() {
+            return self.check_response(&expect).await;
+        }
+        false
     }
 
     /// Set the internally-stored position. Any method which uses a send_gcode
@@ -128,67 +155,117 @@ impl Gcode {
         self.state
     }
 
+    fn add_state_variables(&mut self) {
+        self.gcode_substitutions.insert("curing".to_string(), self.state.curing.to_string());
+        self.gcode_substitutions.insert("z".to_string(), self.state.z.to_string());
+    }
+
 }
 
 
 #[async_trait]
 impl HardwareControl for Gcode {
-    async fn home(&mut self) -> PhysicalState{
-        self.send_gcode(self.config.home_command.clone()).await;
-
-        return self.state;
-    }
-
-    async fn move_z(&mut self, z: f32) -> PhysicalState {
-        self.gcode_substitutions.insert("{z}".to_string(), z.to_string());
-
-        self.send_and_await_gcode(self.config.move_command.clone(), self.config.sync_message.clone()).await;
-
-        self.gcode_substitutions.remove(&"{z}".to_string());
-
-        return self.set_position(z);
-    }
-
-    async fn start_curing(&mut self) -> PhysicalState {
-        self.send_gcode(self.config.cure_start.clone()).await;
-
-        return self.set_curing(true);
-    }
-    
-
-    async fn stop_curing(&mut self) -> PhysicalState {
-        self.send_gcode(self.config.cure_end.clone()).await;
-
-        return self.set_curing(false);
-    }
-    
-    async fn start_print(&mut self) -> PhysicalState {
-        self.send_gcode(self.config.print_start.clone()).await;
-
-        return self.state;
-    }
-
-    async fn end_print(&mut self) -> PhysicalState{
-        self.send_gcode(self.config.print_end.clone()).await;
-
-        return self.state;
-    }
-
-    async fn boot(&mut self) -> PhysicalState{
+    async fn initialize(&mut self) {
         // Run the serial port listener task
         tokio::spawn(Gcode::run_listener(
             self.serial_port.try_clone_native().expect("Unable to clone serial connection"),
             self.transceiver.0.clone()
         ));
-
-        self.send_gcode(self.config.boot.clone()).await;
-
-        return self.state;
     }
 
-    async fn shutdown(&mut self) -> PhysicalState{
-        self.send_gcode(self.config.shutdown.clone()).await;
+    async fn is_ready(&mut self) -> bool {
+        self.send_and_check_gcode(
+            self.config.status_check.clone(),
+            self.config.status_desired.clone()
+        ).await
+    }
 
-        return self.state;
+    async fn home(&mut self) -> std::io::Result<PhysicalState>{
+        self.send_gcode(self.config.home_command.clone()).await?;
+
+        Ok(self.state)
+    }
+
+    async fn move_z(&mut self, z: f32, speed: f32) -> std::io::Result<PhysicalState> {
+        // To handle floating point precision issues, truncate to micron precision
+        let z = (z*1000.0).trunc()/1000.0;
+
+        // Convert from mm/s to mm/min f value
+        let speed = speed*60.0;
+
+        self.set_position(z);
+        self.add_print_variable("speed".to_string(), speed.to_string());
+
+        self.send_and_await_gcode(
+            self.config.move_command.clone(),
+            self.config.move_sync.clone(),
+            self.config.move_timeout
+        ).await?;
+
+        self.remove_print_variable("speed".to_string());
+
+        Ok(self.state)
+    }
+
+    async fn start_layer(&mut self, _layer: usize) -> std::io::Result<PhysicalState> {
+        self.send_gcode(self.config.layer_start.clone()).await?;
+
+        Ok(self.state)
+    }
+
+    async fn start_curing(&mut self) -> std::io::Result<PhysicalState> {
+        self.set_curing(true);
+
+        self.send_gcode(self.config.cure_start.clone()).await?;
+
+        Ok(self.state)
+    }
+    
+
+    async fn stop_curing(&mut self) -> std::io::Result<PhysicalState> {
+        self.set_curing(false);
+        self.send_gcode(self.config.cure_end.clone()).await?;
+        Ok(self.state)
+
+    }
+    
+    async fn start_print(&mut self) -> std::io::Result<PhysicalState> {
+        self.send_gcode(self.config.print_start.clone()).await?;
+
+        Ok(self.state)
+    }
+
+    async fn end_print(&mut self) -> std::io::Result<PhysicalState>{
+        self.send_gcode(self.config.print_end.clone()).await?;
+
+        Ok(self.state)
+    }
+
+    async fn boot(&mut self) -> std::io::Result<PhysicalState>{
+        self.send_gcode(self.config.boot.clone()).await?;
+
+        Ok(self.state)
+    }
+
+    async fn shutdown(&mut self) -> std::io::Result<()>{
+        self.send_gcode(self.config.shutdown.clone()).await?;
+
+        Ok(())
+    }
+
+    fn get_physical_state(&self) -> std::io::Result<PhysicalState> {
+        Ok(self.state)
+    }
+
+    fn add_print_variable(&mut self, variable: String, value: String) {
+        self.gcode_substitutions.insert(variable, value);
+    }
+
+    fn remove_print_variable(&mut self, variable: String) {
+        self.gcode_substitutions.remove(&variable);
+    }
+
+    fn clear_variables(&mut self) {
+        self.gcode_substitutions.clear();
     }
 }

@@ -1,4 +1,7 @@
 # Odyssey [![Discord Link](https://discordapp.com/api/guilds/881628699500359731/widget.png?style=shield)](https://discord.gg/GFUn9gwRsj)
+[![GitHub license](https://img.shields.io/github/license/TheContrappostoShop/Odyssey.svg?style=for-the-badge)](https://github.com/TheContrappostoShop/Odyssey/blob/main/LICENSE)
+[![GitHub release](https://img.shields.io/github/release/TheContrappostoShop/Odyssey.svg?style=for-the-badge)](https://github.com/TheContrappostoShop/Odyssey/releases)
+
 Engine for processing and printing Prusa SL1 slicer files, designed for the
 [Apollo](https://github.com/TheContrappostoShop/Apollo) series of control board
 and the

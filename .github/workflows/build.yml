@@ -3,27 +3,28 @@ name: Build Odyssey
 on:
   push:
   workflow_call:
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4.1.1
 
-      - uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1.0.6
         with:
           toolchain: stable
           target: armv7-unknown-linux-gnueabihf
           components: clippy
           override: true
 
-      - uses: actions-rs/cargo@v1
+      - uses: actions-rs/cargo@v1.0.1
         with:
           use-cross: true
           command: build
           args: --release --target armv7-unknown-linux-gnueabihf
 
-      - uses: SebRollen/toml-action@v1.0.1
+      - uses: SebRollen/toml-action@v1.2.0
         id: read_toml
         with:
           file: 'Cargo.toml'
@@ -35,10 +36,10 @@ jobs:
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey odyssey
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey.yaml odyssey.yaml
           cp target/armv7-unknown-linux-gnueabihf/release/apiHelper.py apiHelper.py
-          tar -czvf odyssey.tar.gz  odyssey odyssey.yaml apiHelper.py
+          tar -czvf odyssey.tar.gz odyssey odyssey.yaml apiHelper.py
           echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4.3.1
         with:
           name: odyssey
           path: |
@@ -46,7 +47,7 @@ jobs:
             odyssey.yaml
             apiHelper.py
 
-      - uses: ncipollo/release-action@v1
+      - uses: ncipollo/release-action@v1.14.0
         if: github.ref == 'refs/heads/main'
         with:
           artifacts: odyssey.tar.gz
@@ -54,7 +55,7 @@ jobs:
           skipIfReleaseExists: true
           generateReleaseNotes: true
           commit: ${{github.sha}}
-      - uses: ncipollo/release-action@v1
+      - uses: ncipollo/release-action@v1.14.0
         if: github.ref != 'refs/heads/main'
         with:
           artifacts: odyssey.tar.gz

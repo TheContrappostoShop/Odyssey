@@ -36,7 +36,7 @@ jobs:
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey odyssey
           cp target/armv7-unknown-linux-gnueabihf/release/odyssey.yaml odyssey.yaml
           cp target/armv7-unknown-linux-gnueabihf/release/apiHelper.py apiHelper.py
-          tar -czvf odyssey.tar.gz  odyssey odyssey.yaml apiHelper.py
+          tar -czvf odyssey.tar.gz odyssey odyssey.yaml apiHelper.py
           echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v3
@@ -46,6 +46,7 @@ jobs:
             odyssey
             odyssey.yaml
             apiHelper.py
+            odyssey.tar.gz
 
       - uses: ncipollo/release-action@v1
         if: github.ref == 'refs/heads/main'

@@ -23,22 +23,19 @@ printer:
 gcode:
   boot: |
     G90
-    SET_FAN_SPEED FAN=filter_fans SPEED=0.3
   shutdown: |
     M84
-    SET_PIN PIN=led_array VALUE=0
+    UVLED_OFF
   home_command: G28
-  move_command: G0 Z{z} F{speed}
+  move_command: MOVE_PLATE Z={z} F={speed}
   print_start: |
-    G28
-    SET_FAN_SPEED FAN=filter_fans SPEED=1
+    HOME_AXIS
     SET_PRINT_STATS_INFO TOTAL_LAYER={total_layers}
   print_end: |
-    G0 Z{max_z}
-    SET_FAN_SPEED FAN=filter_fans SPEED=0.3
+    MOVE_PLATE Z={max_z} F=400
   layer_start: SET_PRINT_STATS_INFO CURRENT_LAYER={layer}
-  cure_start: SET_PIN PIN=led_array VALUE=650
-  cure_end: SET_PIN PIN=led_array VALUE=0
+  cure_start: UVLED_ON
+  cure_end: UVLED_OFF
   move_sync: Z_move_comp
   move_timeout: 60
   status_check: status

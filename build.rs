@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-const CONFIG_FILE: &str = "odyssey.yaml";
+const CONFIG_FILE: &str = "default.yaml";
 const API_HELPER_FILE: &str = "apiHelper.py";
 
 fn main() {

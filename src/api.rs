@@ -340,7 +340,7 @@ pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<
         ;//.catch_error(f);
 
     let port = configuration.port.to_string();
-    let addr = format!("127.0.0.1:{port}");
+    let addr = format!("0.0.0.0:{port}");
 
     Server::new(TcpListener::bind(addr))
         .run(app)

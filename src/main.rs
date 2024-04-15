@@ -22,7 +22,7 @@ mod printfile;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Odyssey config file
-    #[arg(default_value_t=String::from("./odyssey.yaml"), short, long)]
+    #[arg(default_value_t=String::from("./default.yaml"), short, long)]
     config: String,
     #[arg(default_value_t=String::from("DEBUG"), short, long)]
     loglevel: String

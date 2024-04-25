@@ -2,19 +2,9 @@ use std::{sync::Arc, path::{Path, PathBuf}, fs::{File, DirEntry}, io::{Write, Re
 
 use itertools::Itertools;
 use poem::{
-    get, 
-    handler, 
-    listener::TcpListener, 
-    web::{
-        Path as URLPath,
-        Data,
-        Json, Multipart, Query
-    }, 
-    Route, 
-    EndpointExt, 
-    Server,
-    Result,
-    post, error::{NotFoundError, NotImplemented, MethodNotAllowedError, ServiceUnavailable}};
+    error::{MethodNotAllowedError, NotFoundError, NotImplemented, ServiceUnavailable, Unauthorized}, get, handler, listener::TcpListener, post, web::{
+        Data, Json, Multipart, Path as URLPath, Query
+    }, EndpointExt, Result, Route, Server};
 use serde::{Deserialize, Serialize};
 use tokio::{sync::{mpsc, broadcast, RwLock}, time::interval};
 use glob::glob;
@@ -121,6 +111,12 @@ pub struct FilesResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DirsResponse {
+    pub dirs: Vec<FileData>,
+    pub next_index: Option<usize>
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PageParams {
     page_index: usize,
     page_size: usize
@@ -131,82 +127,184 @@ const DEFAULT_PAGE_SIZE: usize = 100;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocationParams {
-    category: LocationCategory
+    category: LocationCategory,
+    path_prefix: Option<String>,
 }
 
 #[handler]
 async fn get_files(
     location: Result<Query<LocationParams>>,
     page_params: Result<Query<PageParams>>,
-    Data(configuration): Data<&ApiConfig>
+    Data(configuration): Data<&ApiConfig>,
 ) -> Result<Json<FilesResponse>> {
     let location = location.map_or(
-        LocationCategory::Local,
-        |Query(loc_params)| loc_params.category
+        LocationParams {
+            category: LocationCategory::Local,
+            path_prefix: None,
+        },
+        |Query(loc_params)| loc_params,
     );
 
     let page_params = page_params.map_or(
-        PageParams {page_index: DEFAULT_PAGE_INDEX, page_size: DEFAULT_PAGE_SIZE},
-        |Query(params)| params
+        PageParams {
+            page_index: DEFAULT_PAGE_INDEX,
+            page_size: DEFAULT_PAGE_SIZE,
+        },
+        |Query(params)| params,
     );
 
     log::info!("Getting files in {:?}, {:?}", location, page_params);
 
-    match location {
+    match location.category {
         LocationCategory::Local => {
-            _get_local_files(page_params, configuration)
-        },
-        LocationCategory::Usb => {
-            _get_usb_files(page_params, configuration)
+            _get_local_files(location.path_prefix, page_params, configuration)
         }
+        LocationCategory::Usb => _get_usb_files(page_params, configuration),
     }
 }
 
-fn _get_local_files(page_params: PageParams, configuration: &ApiConfig) -> Result<Json<FilesResponse>> {
-    let upload_string = configuration.upload_path.as_str();
-    let upload_path = Path::new(upload_string);
-    let upload_read_dir = upload_path.read_dir();
+fn _get_local_files(
+    path_prefix: Option<String>,
+    page_params: PageParams,
+    configuration: &ApiConfig,
+) -> Result<Json<FilesResponse>> {
+    let prefix = path_prefix.unwrap_or("".to_string());
+    
+    if prefix.starts_with('/') || prefix.starts_with('.') {
+        return Err(Unauthorized(MethodNotAllowedError))
+    }
 
-    let files_vec = upload_read_dir.map_err(|_| NotFoundError)?
+    let upload_string = &configuration.upload_path;
+
+    let upload_path = Path::new(upload_string.as_str());
+    let prefixed_path = upload_path.join(prefix.as_str());
+
+    let read_dir = prefixed_path.read_dir();
+
+    let files_vec = read_dir
+        .map_err(|_| NotFoundError)?
         .flatten()
         .filter(|f| !f.path().is_dir())
-        .filter(|f| f.path().extension().and_then(OsStr::to_str).eq(&Some("sl1")));
+        .filter(|f| {
+            f.path()
+                .extension()
+                .and_then(OsStr::to_str)
+                .eq(&Some("sl1"))
+        });
 
-
-    let chunks = files_vec
-        .chunks(page_params.page_size);
+    let chunks = files_vec.chunks(page_params.page_size);
 
     let mut chunks_iterator = chunks.into_iter();
-    
+
     let files = chunks_iterator
         .nth(page_params.page_index)
-        .ok_or_else(|| {
-            log::error!("Error reading local file dir");
-            NotFoundError
-        })?
-        .flat_map(|f| get_print_metadata(f, LocationCategory::Local).ok())
-        .collect_vec();
-    
-    let next_index = Some(page_params.page_index+1)
-        .filter(|_| chunks_iterator.next().is_some());
+        .map_or(Vec::new(), |dirs| {
+            dirs.flat_map(|f| get_print_metadata(f, LocationCategory::Local).ok())
+                .collect_vec()
+        });
 
+    let next_index = Some(page_params.page_index + 1).filter(|_| chunks_iterator.next().is_some());
 
-    Ok(Json(FilesResponse {
-        files,
-        next_index
-    }))
+    Ok(Json(FilesResponse { files, next_index }))
 }
 
-
-fn _get_usb_files(_page_params: PageParams, _configuration: &ApiConfig) -> Result<Json<FilesResponse>> {
+fn _get_usb_files(
+    _page_params: PageParams,
+    _configuration: &ApiConfig,
+) -> Result<Json<FilesResponse>> {
     Err(NotImplemented(MethodNotAllowedError))
 
-    /*    
+    /*
     poem::web::Json(glob(&configuration.usb_glob)
         .expect("Failed to read glob pattern")
         .map(|result| result.expect("Error reading path"))
         .map(|path| path.into_os_string().into_string().expect("Error parsing path"))
-        .collect_vec()) 
+        .collect_vec())
+    */
+}
+
+#[handler]
+async fn get_dirs(
+    location: Result<Query<LocationParams>>,
+    page_params: Result<Query<PageParams>>,
+    Data(configuration): Data<&ApiConfig>,
+) -> Result<Json<DirsResponse>> {
+    let location = location.map_or(
+        LocationParams {
+            category: LocationCategory::Local,
+            path_prefix: None,
+        },
+        |Query(loc_params)| loc_params,
+    );
+
+    let page_params = page_params.map_or(
+        PageParams {
+            page_index: DEFAULT_PAGE_INDEX,
+            page_size: DEFAULT_PAGE_SIZE,
+        },
+        |Query(params)| params,
+    );
+
+    log::info!("Getting files in {:?}, {:?}", location, page_params);
+
+    match location.category {
+        LocationCategory::Local => {
+            _get_local_dirs(location.path_prefix, page_params, configuration)
+        }
+        LocationCategory::Usb => _get_usb_dirs(page_params, configuration),
+    }
+}
+fn _get_local_dirs(
+    path_prefix: Option<String>,
+    page_params: PageParams,
+    configuration: &ApiConfig,
+) -> Result<Json<DirsResponse>> {
+    let prefix = path_prefix.unwrap_or("".to_string());
+
+    if prefix.starts_with('/') || prefix.starts_with('.') {
+        return Err(Unauthorized(MethodNotAllowedError))
+    }
+
+    let upload_string = &configuration.upload_path;
+
+    let upload_path = Path::new(upload_string.as_str());
+    let prefixed_path = upload_path.join(prefix.as_str());
+
+    let read_dir = prefixed_path.read_dir();
+
+    let dirs_vec = read_dir
+        .map_err(|_| NotFoundError)?
+        .flatten()
+        .filter(|f| f.path().is_dir());
+
+    let chunks = dirs_vec.chunks(page_params.page_size);
+
+    let mut chunks_iterator = chunks.into_iter();
+
+    let dirs = chunks_iterator
+        .nth(page_params.page_index)
+        .map_or(Vec::new(), |dirs| {
+            dirs.flat_map(|f| get_filedata(f, LocationCategory::Local).ok())
+                .collect_vec()
+        });
+
+    let next_index = Some(page_params.page_index + 1).filter(|_| chunks_iterator.next().is_some());
+
+    Ok(Json(DirsResponse { dirs, next_index }))
+}
+
+fn _get_usb_dirs(
+    _page_params: PageParams,
+    _configuration: &ApiConfig,
+) -> Result<Json<DirsResponse>> {
+    Err(NotImplemented(MethodNotAllowedError))
+
+    /*
+    poem::web::Json(glob(&configuration.usb_glob)
+        .expect("Failed to read glob pattern")
+        .map(|result| result.expect("Error reading path"))
+        .map(|path| path.into_os_string().into_string().expect("Error parsing path"))
+        .collect_vec())
     */
 }
 
@@ -252,13 +350,13 @@ fn get_local_file_path(configuration: &ApiConfig, file_name: String) -> Result<P
     }
 }
 
-fn get_print_metadata(file: DirEntry, location: LocationCategory) -> Result<PrintMetadata> {
-    log::info!("Getting print metadata");
+fn get_filedata(file: DirEntry, location: LocationCategory) -> Result<FileData> {
+    log::info!("Getting file data");
     let modified_time = file.metadata().ok()
         .and_then(|meta| meta.modified().ok())
         .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok()).map(|dur| dur.as_millis());
 
-    let file_data = FileData {
+    Ok(FileData {
         path: file.path().into_os_string().into_string().map_err(|_| {
             log::error!("Error converting file path");
             NotFoundError
@@ -269,7 +367,13 @@ fn get_print_metadata(file: DirEntry, location: LocationCategory) -> Result<Prin
         })?,
         last_modified: modified_time,
         location_category: location
-    };
+    })
+}
+
+fn get_print_metadata(file: DirEntry, location: LocationCategory) -> Result<PrintMetadata> {
+
+    let file_data = get_filedata(file, location)?;
+    log::info!("Extracting print metadata");
 
     Ok(Sl1::from_file(file_data).get_metadata())
 }
@@ -334,6 +438,7 @@ pub async fn start_api(configuration: ApiConfig, operation_sender: mpsc::Sender<
         .at("/shutdown", post(shutdown))
         .at("/files", get(get_files).post(upload_file))
         .at("/files/:location/:file_name", get(get_file).delete(delete_file))
+        .at("/dirs", get(get_dirs))
         .data(operation_sender)
         .data(state_ref.clone())
         .data(configuration.clone())

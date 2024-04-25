@@ -2,19 +2,9 @@ use std::{sync::Arc, path::{Path, PathBuf}, fs::{File, DirEntry}, io::{Write, Re
 
 use itertools::Itertools;
 use poem::{
-    get, 
-    handler, 
-    listener::TcpListener, 
-    web::{
-        Path as URLPath,
-        Data,
-        Json, Multipart, Query
-    }, 
-    Route, 
-    EndpointExt, 
-    Server,
-    Result,
-    post, error::{NotFoundError, NotImplemented, MethodNotAllowedError, ServiceUnavailable}};
+    error::{MethodNotAllowedError, NotFoundError, NotImplemented, ServiceUnavailable, Unauthorized}, get, handler, listener::TcpListener, post, web::{
+        Data, Json, Multipart, Path as URLPath, Query
+    }, EndpointExt, Result, Route, Server};
 use serde::{Deserialize, Serialize};
 use tokio::{sync::{mpsc, broadcast, RwLock}, time::interval};
 use glob::glob;
@@ -179,6 +169,11 @@ fn _get_local_files(
     configuration: &ApiConfig,
 ) -> Result<Json<FilesResponse>> {
     let prefix = path_prefix.unwrap_or("".to_string());
+    
+    if prefix.starts_with('/') || prefix.starts_with('.') {
+        return Err(Unauthorized(MethodNotAllowedError))
+    }
+
     let upload_string = &configuration.upload_path;
 
     let upload_path = Path::new(upload_string.as_str());
@@ -265,6 +260,11 @@ fn _get_local_dirs(
     configuration: &ApiConfig,
 ) -> Result<Json<DirsResponse>> {
     let prefix = path_prefix.unwrap_or("".to_string());
+
+    if prefix.starts_with('/') || prefix.starts_with('.') {
+        return Err(Unauthorized(MethodNotAllowedError))
+    }
+
     let upload_string = &configuration.upload_path;
 
     let upload_path = Path::new(upload_string.as_str());

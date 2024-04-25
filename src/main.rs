@@ -6,17 +6,17 @@ use configuration::Configuration;
 use display::PrintDisplay;
 use printer::HardwareControl;
 use simple_logger::SimpleLogger;
-use tokio::{runtime::{Builder, Runtime}};
+use tokio::runtime::{Builder, Runtime};
 
-use crate::{printer::Printer, gcode::Gcode};
+use crate::{gcode::Gcode, printer::Printer};
 
 mod api;
 mod configuration;
-mod sl1;
 mod display;
-mod printer;
 mod gcode;
+mod printer;
 mod printfile;
+mod sl1;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -25,11 +25,10 @@ struct Args {
     #[arg(default_value_t=String::from("./default.yaml"), short, long)]
     config: String,
     #[arg(default_value_t=String::from("DEBUG"), short, long)]
-    loglevel: String
+    loglevel: String,
 }
 
 fn main() {
-
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         default_panic(info);
@@ -39,10 +38,9 @@ fn main() {
     let args = parse_cli();
 
     SimpleLogger::new()
-        .with_level(
-            log::LevelFilter::from_str(&args.loglevel)
-                .expect("Unable to parse loglevel")
-        ).init().unwrap();
+        .with_level(log::LevelFilter::from_str(&args.loglevel).expect("Unable to parse loglevel"))
+        .init()
+        .unwrap();
 
     log::info!("Starting Odyssey");
 
@@ -51,18 +49,14 @@ fn main() {
     let mut printer = build_printer(configuration.clone());
 
     let runtime = build_runtime();
-    
+
     runtime.block_on(async {
         let sender = printer.get_operation_sender().await.clone();
         let receiver = printer.get_status_receiver().await;
 
-        tokio::spawn( async move { printer.start_statemachine().await });
+        tokio::spawn(async move { printer.start_statemachine().await });
 
-        api::start_api(
-            configuration.api, 
-            sender,
-                receiver
-        ).await;
+        api::start_api(configuration.api, sender, receiver).await;
     });
 }
 
@@ -88,24 +82,23 @@ fn parse_config(config_file: String) -> Configuration {
 
 fn build_printer(configuration: Configuration) -> Printer<Gcode> {
     let serial = serialport::new(
-        configuration.printer.serial.clone(), configuration.printer.baudrate
+        configuration.printer.serial.clone(),
+        configuration.printer.baudrate,
     );
 
     let mut gcode = Gcode::new(configuration.clone(), serial);
 
-
     gcode.add_print_variable("max_z".to_string(), configuration.printer.max_z.to_string());
-    gcode.add_print_variable("z_lift".to_string(), configuration.printer.default_lift.to_string());
-
-    let display: PrintDisplay = PrintDisplay::new(
-        configuration.printer.frame_buffer.clone(), 
-        configuration.printer.fb_bit_depth, 
-        configuration.printer.fb_chunk_size
+    gcode.add_print_variable(
+        "z_lift".to_string(),
+        configuration.printer.default_lift.to_string(),
     );
 
-    Printer::new(
-        configuration.printer,
-        display,
-        gcode,
-    )
+    let display: PrintDisplay = PrintDisplay::new(
+        configuration.printer.frame_buffer.clone(),
+        configuration.printer.fb_bit_depth,
+        configuration.printer.fb_chunk_size,
+    );
+
+    Printer::new(configuration.printer, display, gcode)
 }

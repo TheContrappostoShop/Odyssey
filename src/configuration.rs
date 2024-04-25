@@ -1,5 +1,5 @@
 use config::{Config, ConfigError, File};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrinterConfig {
@@ -30,14 +30,14 @@ pub struct GcodeConfig {
     pub move_sync: String,
     pub move_timeout: usize,
     pub status_check: String,
-    pub status_desired: String
+    pub status_desired: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApiConfig {
     pub upload_path: String,
     pub usb_glob: String,
-    pub port: u16
+    pub port: u16,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -170,7 +170,7 @@ const DEFAULT_PAGE_SIZE: usize = 100;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocationParams {
     category: LocationCategory,
-    path_prefix: Option<String>,
+    subdirectory: Option<String>,
 }
 
 #[handler]
@@ -182,7 +182,7 @@ async fn get_files(
     let location = location.map_or(
         LocationParams {
             category: LocationCategory::Local,
-            path_prefix: None,
+            subdirectory: None,
         },
         |Query(loc_params)| loc_params,
     );
@@ -199,29 +199,29 @@ async fn get_files(
 
     match location.category {
         LocationCategory::Local => {
-            _get_local_files(location.path_prefix, page_params, configuration)
+            _get_local_files(location.subdirectory, page_params, configuration)
         }
         LocationCategory::Usb => _get_usb_files(page_params, configuration),
     }
 }
 
 fn _get_local_files(
-    path_prefix: Option<String>,
+    subdirectory: Option<String>,
     page_params: PageParams,
     configuration: &ApiConfig,
 ) -> Result<Json<FilesResponse>> {
-    let prefix = path_prefix.unwrap_or("".to_string());
+    let directory = subdirectory.unwrap_or("".to_string());
 
-    if prefix.starts_with('/') || prefix.starts_with('.') {
+    if directory.starts_with('/') || directory.starts_with('.') {
         return Err(Unauthorized(MethodNotAllowedError));
     }
 
     let upload_string = &configuration.upload_path;
 
     let upload_path = Path::new(upload_string.as_str());
-    let prefixed_path = upload_path.join(prefix.as_str());
+    let full_path = upload_path.join(directory.as_str());
 
-    let read_dir = prefixed_path.read_dir();
+    let read_dir = full_path.read_dir();
 
     let files_vec = read_dir
         .map_err(|_| NotFoundError)?
@@ -274,7 +274,7 @@ async fn get_dirs(
     let location = location.map_or(
         LocationParams {
             category: LocationCategory::Local,
-            path_prefix: None,
+            subdirectory: None,
         },
         |Query(loc_params)| loc_params,
     );
@@ -291,28 +291,28 @@ async fn get_dirs(
 
     match location.category {
         LocationCategory::Local => {
-            _get_local_dirs(location.path_prefix, page_params, configuration)
+            _get_local_dirs(location.subdirectory, page_params, configuration)
         }
         LocationCategory::Usb => _get_usb_dirs(page_params, configuration),
     }
 }
 fn _get_local_dirs(
-    path_prefix: Option<String>,
+    subdirectory: Option<String>,
     page_params: PageParams,
     configuration: &ApiConfig,
 ) -> Result<Json<DirsResponse>> {
-    let prefix = path_prefix.unwrap_or("".to_string());
+    let directory = subdirectory.unwrap_or("".to_string());
 
-    if prefix.starts_with('/') || prefix.starts_with('.') {
+    if directory.starts_with('/') || directory.starts_with('.') {
         return Err(Unauthorized(MethodNotAllowedError));
     }
 
     let upload_string = &configuration.upload_path;
 
     let upload_path = Path::new(upload_string.as_str());
-    let prefixed_path = upload_path.join(prefix.as_str());
+    let full_path = upload_path.join(directory.as_str());
 
-    let read_dir = prefixed_path.read_dir();
+    let read_dir = full_path.read_dir();
 
     let dirs_vec = read_dir
         .map_err(|_| NotFoundError)?

@@ -1,17 +1,15 @@
 use core::panic;
-use std::io::{self, Write, BufReader, BufRead, Error, ErrorKind};
 use std::collections::HashMap;
+use std::io::{self, BufRead, BufReader, Error, ErrorKind, Write};
 
-use regex::Regex;
 use async_trait::async_trait;
-use serialport::{TTYPort, SerialPortBuilder, SerialPort, ClearBuffer};
-use tokio::sync::mpsc::{self, Sender, Receiver};
-use tokio::time::{interval, Duration, sleep};
+use regex::Regex;
+use serialport::{ClearBuffer, SerialPort, SerialPortBuilder, TTYPort};
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::time::{interval, sleep, Duration};
 
-use crate::configuration::{GcodeConfig, Configuration};
+use crate::configuration::{Configuration, GcodeConfig};
 use crate::printer::{HardwareControl, PhysicalState};
-
-
 
 pub struct Gcode {
     pub config: GcodeConfig,
@@ -21,22 +19,24 @@ pub struct Gcode {
     pub transceiver: (Sender<String>, Receiver<String>),
 }
 
-
-
 impl Gcode {
     pub fn new(config: Configuration, serial_builder: SerialPortBuilder) -> Gcode {
         let transceiver = mpsc::channel(100);
-        let mut port = serial_builder.open_native().expect("Unable to open serial connection");
+        let mut port = serial_builder
+            .open_native()
+            .expect("Unable to open serial connection");
 
-        port.set_exclusive(false).expect("Unable to set serial port exclusivity(false)");
-        port.clear(ClearBuffer::All).expect("Unable to clear serialport buffers");
+        port.set_exclusive(false)
+            .expect("Unable to set serial port exclusivity(false)");
+        port.clear(ClearBuffer::All)
+            .expect("Unable to clear serialport buffers");
 
         Gcode {
-            config: config.gcode, 
-            state: PhysicalState { 
-                z: 0.0, 
-                curing: false 
-            }, 
+            config: config.gcode,
+            state: PhysicalState {
+                z: 0.0,
+                curing: false,
+            },
             gcode_substitutions: HashMap::new(),
             serial_port: port,
             transceiver,
@@ -54,20 +54,22 @@ impl Gcode {
                 Err(e) => match e.kind() {
                     io::ErrorKind::TimedOut => {
                         continue;
-                    },
+                    }
                     // Broken Pipe here
                     other_error => panic!("Error reading from serial port: {:?}", other_error),
                 },
                 Ok(n) => {
-                    if n>0 {
+                    if n > 0 {
                         log::debug!("Read {} bytes from serial: {}", n, read_string.trim_end());
-                        sender.send(read_string).await.expect("Unable to send message to channel");
+                        sender
+                            .send(read_string)
+                            .await
+                            .expect("Unable to send message to channel");
                     }
-                },
+                }
             };
         }
     }
-
 
     fn parse_gcode(&mut self, code: String) -> String {
         let re: Regex = Regex::new(r"\{(?P<substitution>\w*)\}").unwrap();
@@ -87,37 +89,51 @@ impl Gcode {
     }
 
     async fn send_gcode(&mut self, code: String) -> std::io::Result<()> {
-        let parsed_code = self.parse_gcode(code)+"\r\n";
+        let parsed_code = self.parse_gcode(code) + "\r\n";
         log::debug!("Executing gcode: {}", parsed_code.trim_end());
-        
+
         let n = self.serial_port.write(parsed_code.as_bytes())?;
-        self.serial_port.flush().expect("Unable to flush serial connection");
+        self.serial_port
+            .flush()
+            .expect("Unable to flush serial connection");
 
         log::trace!("Wrote {} bytes", n);
-        // Force a delay between commands 
+        // Force a delay between commands
         sleep(Duration::from_millis(100)).await;
         Ok(())
     }
 
-    async fn await_response(&mut self, response: String, timeout_seconds: usize) -> std::io::Result<()> {
+    async fn await_response(
+        &mut self,
+        response: String,
+        timeout_seconds: usize,
+    ) -> std::io::Result<()> {
         log::trace!("Expecting response: {}", response);
         let mut interval = interval(Duration::from_millis(100));
-        let intervals = 10*timeout_seconds;
+        let intervals = 10 * timeout_seconds;
 
         for _ in 0..intervals {
             if self.check_response(&response).await {
                 log::trace!("Expected response received");
                 return Ok(());
+            } else {
+                interval.tick().await;
             }
-            else {interval.tick().await;}
         }
-        Err(Error::new(ErrorKind::TimedOut, "Timed out awaiting gcode response"))
+        Err(Error::new(
+            ErrorKind::TimedOut,
+            "Timed out awaiting gcode response",
+        ))
     }
 
     // Consume all available responses in case of ack messages before desired
     async fn check_response(&mut self, response: &String) -> bool {
-        let mut has_response = self.transceiver.1.recv()
-            .await.expect("Unable to receive message from channel")
+        let mut has_response = self
+            .transceiver
+            .1
+            .recv()
+            .await
+            .expect("Unable to receive message from channel")
             .contains(response);
 
         while let Ok(resp) = self.transceiver.1.try_recv() {
@@ -126,7 +142,12 @@ impl Gcode {
         has_response
     }
 
-    async fn send_and_await_gcode(&mut self, code: String, expect: String, timeout_seconds: usize) -> std::io::Result<()> {
+    async fn send_and_await_gcode(
+        &mut self,
+        code: String,
+        expect: String,
+        timeout_seconds: usize,
+    ) -> std::io::Result<()> {
         self.send_gcode(code).await?;
         self.await_response(expect, timeout_seconds).await?;
         Ok(())
@@ -156,31 +177,34 @@ impl Gcode {
     }
 
     fn add_state_variables(&mut self) {
-        self.gcode_substitutions.insert("curing".to_string(), self.state.curing.to_string());
-        self.gcode_substitutions.insert("z".to_string(), self.state.z.to_string());
+        self.gcode_substitutions
+            .insert("curing".to_string(), self.state.curing.to_string());
+        self.gcode_substitutions
+            .insert("z".to_string(), self.state.z.to_string());
     }
-
 }
-
 
 #[async_trait]
 impl HardwareControl for Gcode {
     async fn initialize(&mut self) {
         // Run the serial port listener task
         tokio::spawn(Gcode::run_listener(
-            self.serial_port.try_clone_native().expect("Unable to clone serial connection"),
-            self.transceiver.0.clone()
+            self.serial_port
+                .try_clone_native()
+                .expect("Unable to clone serial connection"),
+            self.transceiver.0.clone(),
         ));
     }
 
     async fn is_ready(&mut self) -> bool {
         self.send_and_check_gcode(
             self.config.status_check.clone(),
-            self.config.status_desired.clone()
-        ).await
+            self.config.status_desired.clone(),
+        )
+        .await
     }
 
-    async fn home(&mut self) -> std::io::Result<PhysicalState>{
+    async fn home(&mut self) -> std::io::Result<PhysicalState> {
         self.send_gcode(self.config.home_command.clone()).await?;
 
         Ok(self.state)
@@ -188,10 +212,10 @@ impl HardwareControl for Gcode {
 
     async fn move_z(&mut self, z: f32, speed: f32) -> std::io::Result<PhysicalState> {
         // To handle floating point precision issues, truncate to micron precision
-        let z = (z*1000.0).trunc()/1000.0;
+        let z = (z * 1000.0).trunc() / 1000.0;
 
         // Convert from mm/s to mm/min f value
-        let speed = speed*60.0;
+        let speed = speed * 60.0;
 
         self.set_position(z);
         self.add_print_variable("speed".to_string(), speed.to_string());
@@ -199,8 +223,9 @@ impl HardwareControl for Gcode {
         self.send_and_await_gcode(
             self.config.move_command.clone(),
             self.config.move_sync.clone(),
-            self.config.move_timeout
-        ).await?;
+            self.config.move_timeout,
+        )
+        .await?;
 
         self.remove_print_variable("speed".to_string());
 
@@ -220,34 +245,32 @@ impl HardwareControl for Gcode {
 
         Ok(self.state)
     }
-    
 
     async fn stop_curing(&mut self) -> std::io::Result<PhysicalState> {
         self.set_curing(false);
         self.send_gcode(self.config.cure_end.clone()).await?;
         Ok(self.state)
-
     }
-    
+
     async fn start_print(&mut self) -> std::io::Result<PhysicalState> {
         self.send_gcode(self.config.print_start.clone()).await?;
 
         Ok(self.state)
     }
 
-    async fn end_print(&mut self) -> std::io::Result<PhysicalState>{
+    async fn end_print(&mut self) -> std::io::Result<PhysicalState> {
         self.send_gcode(self.config.print_end.clone()).await?;
 
         Ok(self.state)
     }
 
-    async fn boot(&mut self) -> std::io::Result<PhysicalState>{
+    async fn boot(&mut self) -> std::io::Result<PhysicalState> {
         self.send_gcode(self.config.boot.clone()).await?;
 
         Ok(self.state)
     }
 
-    async fn shutdown(&mut self) -> std::io::Result<()>{
+    async fn shutdown(&mut self) -> std::io::Result<()> {
         self.send_gcode(self.config.shutdown.clone()).await?;
 
         Ok(())

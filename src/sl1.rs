@@ -1,12 +1,12 @@
-use std::{io::Read, fs::File};
+use std::{fs::File, io::Read};
 
 use async_trait::async_trait;
-use itertools::Itertools;
 use config::{Config, ConfigError, File as ConfigFile, FileFormat};
-use serde::{Deserialize};
+use itertools::Itertools;
+use serde::Deserialize;
 use zip::ZipArchive;
 
-use crate::printfile::{PrintFile, Layer, PrintMetadata, FileData};
+use crate::printfile::{FileData, Layer, PrintFile, PrintMetadata};
 
 const CONFIG_FILE: &str = "config.ini";
 
@@ -39,14 +39,14 @@ pub struct PrintConfig {
 impl PrintConfig {
     /// Compute the exposure time of the given frame index, based on the PrintConfig
     fn exposure_time(&self, index: usize) -> f32 {
-        if index<self.num_fade {
+        if index < self.num_fade {
             let fade_rate = (self.num_fade - index) as f32 / self.num_fade as f32;
-            self.exp_time + (self.exp_time_first-self.exp_time) * (fade_rate)
+            self.exp_time + (self.exp_time_first - self.exp_time) * (fade_rate)
         } else {
             self.exp_time
         }
     }
-    
+
     /// Read the PrintConfig object in from a string representing the .ini contents
     fn from_string(contents: String) -> Result<Self, ConfigError> {
         let s = Config::builder()
@@ -62,7 +62,7 @@ pub struct Sl1 {
     config: PrintConfig,
     archive: ZipArchive<File>,
     frame_list: Vec<String>,
-    metadata: PrintMetadata
+    metadata: PrintMetadata,
 }
 
 #[async_trait]
@@ -71,66 +71,72 @@ impl PrintFile for Sl1 {
     fn from_file(file_data: FileData) -> Sl1 {
         log::info!("Loading PrintFile from SL1 {:?}", file_data);
         let file = File::open(file_data.path.clone()).unwrap();
-        
+
         let mut archive = ZipArchive::new(file).unwrap();
 
         let mut config_contents = String::new();
 
-        archive.by_name(CONFIG_FILE).unwrap().read_to_string(&mut config_contents).expect("Unable to read print config.ini");
+        archive
+            .by_name(CONFIG_FILE)
+            .unwrap()
+            .read_to_string(&mut config_contents)
+            .expect("Unable to read print config.ini");
 
         let config = PrintConfig::from_string(config_contents).unwrap();
 
-        let frame_list: Vec<String> = archive.file_names()
+        let frame_list: Vec<String> = archive
+            .file_names()
             .map(String::from)
             .filter(|name| name.ends_with(".png") && !name.contains('/'))
             .sorted()
             .collect();
 
-        let metadata =  PrintMetadata { 
+        let metadata = PrintMetadata {
             file_data,
             used_material: config.used_material,
             print_time: config.print_time,
             layer_height: config.layer_height,
-            layer_count: frame_list.len()
+            layer_count: frame_list.len(),
         };
 
         Sl1 {
             frame_list,
             archive,
             config,
-            metadata
+            metadata,
         }
     }
 
     async fn get_layer_data(&mut self, index: usize) -> Option<Layer> {
-        if index<self.frame_list.len() {
-
+        if index < self.frame_list.len() {
             let frame_file = self.archive.by_name(self.frame_list[index].as_str());
 
             if let Ok(mut frame_file) = frame_file {
                 let mut ret: Vec<u8> = Vec::new();
 
-                frame_file.read_to_end(&mut ret).expect("Error reading file from archive");
+                frame_file
+                    .read_to_end(&mut ret)
+                    .expect("Error reading file from archive");
 
                 return Some(Layer {
                     file_name: self.frame_list[index].clone(),
                     data: ret,
-                    exposure_time: self.config.exposure_time(index)
+                    exposure_time: self.config.exposure_time(index),
                 });
             }
         }
         None
     }
 
-    fn get_layer_count(& self) -> usize {
+    fn get_layer_count(&self) -> usize {
         self.frame_list.len()
     }
 
-    fn get_layer_height(& self) -> f32 {
+    fn get_layer_height(&self) -> f32 {
         self.config.layer_height
     }
 
-    fn get_metadata(& self) -> PrintMetadata {
+    fn get_metadata(&self) -> PrintMetadata {
         self.metadata.clone()
     }
 }

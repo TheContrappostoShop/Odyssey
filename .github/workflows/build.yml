@@ -17,7 +17,7 @@ jobs:
           rustflags: ""
 
       - name: Install Cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross
 
       - name: Compile armv7
         run: cross build --release --target armv7-unknown-linux-gnueabihf

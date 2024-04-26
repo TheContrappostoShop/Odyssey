@@ -9,20 +9,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1.0.6
-        with:
-          toolchain: stable
-          target: armv7-unknown-linux-gnueabihf
-          components: clippy
-          override: true
+      - name: Install Rust Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - uses: actions-rs/cargo@v1.0.1
-        with:
-          use-cross: true
-          command: build
-          args: --release --target armv7-unknown-linux-gnueabihf
+      - name: Install Cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Clippy Linting
+        run: cargo clippy --all-features
+
+      - name: Rustfmt Check
+        uses: actions-rust-lang/rustfmt@v1
+
+      - name: Compile armv7
+        run: cross build --release --target armv7-unknown-linux-gnueabihf
 
       - uses: SebRollen/toml-action@v1.2.0
         id: read_toml

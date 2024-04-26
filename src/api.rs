@@ -128,7 +128,7 @@ const DEFAULT_PAGE_SIZE: usize = 100;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocationParams {
     category: LocationCategory,
-    sub_directory: Option<String>,
+    subdirectory: Option<String>,
 }
 
 #[handler]
@@ -140,7 +140,7 @@ async fn get_files(
     let location = location.map_or(
         LocationParams {
             category: LocationCategory::Local,
-            sub_directory: None,
+            subdirectory: None,
         },
         |Query(loc_params)| loc_params,
     );
@@ -157,18 +157,18 @@ async fn get_files(
 
     match location.category {
         LocationCategory::Local => {
-            _get_local_files(location.sub_directory, page_params, configuration)
+            _get_local_files(location.subdirectory, page_params, configuration)
         }
         LocationCategory::Usb => _get_usb_files(page_params, configuration),
     }
 }
 
 fn _get_local_files(
-    sub_directory: Option<String>,
+    subdirectory: Option<String>,
     page_params: PageParams,
     configuration: &ApiConfig,
 ) -> Result<Json<FilesResponse>> {
-    let directory = sub_directory.unwrap_or("".to_string());
+    let directory = subdirectory.unwrap_or("".to_string());
     
     if directory.starts_with('/') || directory.starts_with('.') {
         return Err(Unauthorized(MethodNotAllowedError))
@@ -232,7 +232,7 @@ async fn get_dirs(
     let location = location.map_or(
         LocationParams {
             category: LocationCategory::Local,
-            sub_directory: None,
+            subdirectory: None,
         },
         |Query(loc_params)| loc_params,
     );
@@ -249,17 +249,17 @@ async fn get_dirs(
 
     match location.category {
         LocationCategory::Local => {
-            _get_local_dirs(location.sub_directory, page_params, configuration)
+            _get_local_dirs(location.subdirectory, page_params, configuration)
         }
         LocationCategory::Usb => _get_usb_dirs(page_params, configuration),
     }
 }
 fn _get_local_dirs(
-    sub_directory: Option<String>,
+    subdirectory: Option<String>,
     page_params: PageParams,
     configuration: &ApiConfig,
 ) -> Result<Json<DirsResponse>> {
-    let directory = sub_directory.unwrap_or("".to_string());
+    let directory = subdirectory.unwrap_or("".to_string());
 
     if directory.starts_with('/') || directory.starts_with('.') {
         return Err(Unauthorized(MethodNotAllowedError))

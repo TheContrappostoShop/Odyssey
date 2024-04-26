@@ -1,14 +1,17 @@
 [target.x86_64-unknown-linux-gnu]
 pre-build = [
+    "ldconfig /usr/local/lib",
     "rustup update"
 ]
 
 [target.armv7-unknown-linux-gnueabihf]
 pre-build = [
+    "ldconfig /usr/local/lib",
     "rustup update"
 ]
 
 [target.aarch64-unknown-linux-gnu]
 pre-build = [
+    "ldconfig /usr/local/lib",
     "rustup update"
 ]

@@ -270,7 +270,7 @@ fn _get_usb_files(
 
 fn get_file_path(
     configuration: &ApiConfig,
-    file_path: &String,
+    file_path: &str,
     location: &LocationCategory,
 ) -> Result<PathBuf, NotFoundError> {
     log::info!("Getting full file path {:?}, {:?}", location, file_path);
@@ -284,13 +284,13 @@ fn get_file_path(
 // Since USB paths are specified as a glob, find all and filter to file_name
 fn get_usb_file_path(
     configuration: &ApiConfig,
-    file_name: &String,
+    file_name: &str,
 ) -> Result<PathBuf, NotFoundError> {
     let paths = glob(&configuration.usb_glob).map_err(|_| NotFoundError)?;
 
     let path_buf = paths
         .filter_map(|path| path.ok())
-        .find(|path| path.ends_with(file_name.clone()))
+        .find(|path| path.ends_with(file_name))
         .ok_or_else(|| {
             log::error!("Unable to read USB file");
             NotFoundError
@@ -302,7 +302,7 @@ fn get_usb_file_path(
 // For Local files, look directly for specific file
 fn get_local_file_path(
     configuration: &ApiConfig,
-    file_path: &String,
+    file_path: &str,
 ) -> Result<PathBuf, NotFoundError> {
     let path = Path::new(&configuration.upload_path).join(file_path);
 
@@ -339,8 +339,7 @@ fn _get_filedata(
             })?,
         name: target_file
             .file_name()
-            .map(|path_str| path_str.to_str())
-            .flatten()
+            .and_then(|path_str| path_str.to_str())
             .map(|path_str| path_str.to_string())
             .ok_or_else(|| {
                 log::error!("Error converting file name");

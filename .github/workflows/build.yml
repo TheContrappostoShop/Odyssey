@@ -10,53 +10,79 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust Toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-
-      - name: Install Cross
-        run: cargo install cross
-
-      - name: Compile armv7
-        run: cross build --release --target armv7-unknown-linux-gnueabihf
-
+      
       - uses: SebRollen/toml-action@v1.2.0
         id: read_toml
         with:
           file: 'Cargo.toml'
           field: 'package.version'
 
-      - name: Copy & Compress output
-        id: compress
-        run: |
-          cp target/armv7-unknown-linux-gnueabihf/release/odyssey odyssey
-          cp target/armv7-unknown-linux-gnueabihf/release/default.yaml default.yaml
-          cp target/armv7-unknown-linux-gnueabihf/release/apiHelper.py apiHelper.py
-          tar -czvf odyssey.tar.gz odyssey default.yaml apiHelper.py
-          echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
+      - name: install dependencies
+        run: apt install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf g++-aarch64-linux-gnu gcc-aarch64-linux-gnu gcc g++
 
-      - uses: actions/upload-artifact@v4.3.1
+      - name: Update Rust Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          name: odyssey
-          path: |
-            odyssey
-            default.yaml
-            apiHelper.py
+          rustflags: ""
+
+      - name: Compile, Copy, and Compress armv7
+        run: |
+          cargo build --release --target armv7-unknown-linux-gnueabihf
+          mkdir odyssey_armv7
+          mv target/armv7-unknown-linux-gnueabihf/release/odyssey odyssey_armv7
+          cp default.yaml odyssey_armv7
+          cp apiHelper.py odyssey_armv7
+          tar -czvf odyssey_armv7.tar.gz odyssey_armv7
+      
+      - name: upload armv7 artifact
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          name: odyssey_armv7
+          path: odyssey_armv7/*
+          
+      - name: Compile, Copy, and Compress aarch64
+        run: |
+          cargo build --release --target aarch64-unknown-linux-gnu
+          mkdir odyssey_aarch64
+          mv target/aarch64-unknown-linux-gnu/release/odyssey odyssey_aarch64
+          cp default.yaml odyssey_aarch64
+          cp apiHelper.py odyssey_aarch64
+          tar -czvf odyssey_aarch64.tar.gz odyssey_aarch64
+      
+      - name: upload aarch64 artifact
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          name: odyssey_aarch64
+          path: odyssey_aarch64/*
+          
+      - name: Compile, Copy, and Compress x86_64
+        run: |
+          cargo build --release --target x86_64-unknown-linux-gnu
+          mkdir odyssey_x86_64
+          mv target/x86_64-unknown-linux-gnu/release/odyssey odyssey_x86_64
+          cp default.yaml odyssey_x86_64
+          cp apiHelper.py odyssey_x86_64
+          tar -czvf odyssey_x86_64.tar.gz odyssey_x86_64
+      
+      - name: upload x86_64 artifact
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          name: odyssey_x86_64
+          path: odyssey_x86_64/*
 
       - uses: ncipollo/release-action@v1.14.0
         if: github.ref == 'refs/heads/main'
         with:
-          artifacts: odyssey.tar.gz
+          artifacts: "odyssey*.tar.gz"
           tag: v${{ steps.read_toml.outputs.value }}
           skipIfReleaseExists: true
           generateReleaseNotes: true
           commit: ${{github.sha}}
+
       - uses: ncipollo/release-action@v1.14.0
         if: github.ref != 'refs/heads/main'
         with:
-          artifacts: odyssey.tar.gz
+          artifacts: "*odyssey*.tar.gz"
           tag: BRANCH_${{github.ref_name}}
           skipIfReleaseExists: false
           allowUpdates: true

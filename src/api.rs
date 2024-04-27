@@ -1,8 +1,7 @@
 use std::{
     ffi::OsStr,
-    fs::{DirEntry, File},
+    fs::File,
     io::{Read, Write},
-    iter,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, UNIX_EPOCH},

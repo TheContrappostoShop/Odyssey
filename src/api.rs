@@ -1,12 +1,18 @@
 use std::{
-    ffi::OsStr, fs::{DirEntry, File}, io::{Read, Write}, iter, path::{Path, PathBuf}, sync::Arc, time::{Duration, UNIX_EPOCH}
+    ffi::OsStr,
+    fs::{DirEntry, File},
+    io::{Read, Write},
+    iter,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration, UNIX_EPOCH},
 };
 
 use glob::glob;
 use itertools::Itertools;
 use poem::{
     error::{
-        MethodNotAllowedError, NotFoundError, NotImplemented, ServiceUnavailable, Unauthorized
+        MethodNotAllowedError, NotFoundError, NotImplemented, ServiceUnavailable, Unauthorized,
     },
     get, handler,
     listener::TcpListener,
@@ -218,42 +224,34 @@ fn _get_local_files(
         .flatten()
         .map(|f| f.path())
         // TODO add sorting here
-        .filter(|f| {
-            f.is_dir() ||
-            f.extension()
-                .and_then(OsStr::to_str)
-                .eq(&Some("sl1"))
-        });
+        .filter(|f| f.is_dir() || f.extension().and_then(OsStr::to_str).eq(&Some("sl1")));
 
     let chunks = files_vec.chunks(page_params.page_size);
 
     let mut chunks_iterator = chunks.into_iter();
-/*
-    let files = chunks_iterator
-        .nth(page_params.page_index)
-        .map_or(Vec::new(), |dirs| {
-            dirs.flat_map(|f| get_print_metadata(f, LocationCategory::Local).ok())
-                .collect_vec()
-        });
-
-    let next_index = Some(page_params.page_index + 1).filter(|_| chunks_iterator.next().is_some());
-*/
-
 
     let paths = chunks_iterator
         .nth(page_params.page_index)
-        .map_or(Vec::new(), |dirs| {
-            dirs.collect_vec()
-        });
-    
-    let dirs = paths.iter().filter(|f| f.is_dir()).flat_map(|f| _get_filedata(f.clone(), &LocationCategory::Local, configuration).ok()).collect_vec();
-    let files = paths.iter().filter(|f| !f.is_dir()).flat_map(|f| _get_print_metadata(f.clone(), &LocationCategory::Local, configuration).ok()).collect_vec();
+        .map_or(Vec::new(), |dirs| dirs.collect_vec());
 
-
+    let dirs = paths
+        .iter()
+        .filter(|f| f.is_dir())
+        .flat_map(|f| _get_filedata(f.clone(), &LocationCategory::Local, configuration).ok())
+        .collect_vec();
+    let files = paths
+        .iter()
+        .filter(|f| !f.is_dir())
+        .flat_map(|f| _get_print_metadata(f.clone(), &LocationCategory::Local, configuration).ok())
+        .collect_vec();
 
     let next_index = Some(page_params.page_index + 1).filter(|_| chunks_iterator.next().is_some());
 
-    Ok(Json(FilesResponse { files, dirs, next_index }))
+    Ok(Json(FilesResponse {
+        files,
+        dirs,
+        next_index,
+    }))
 }
 
 fn _get_usb_files(
@@ -317,7 +315,11 @@ fn get_local_file_path(
     }
 }
 
-fn _get_filedata(target_file: PathBuf, location: &LocationCategory, configuration: &ApiConfig) -> Result<FileData> {
+fn _get_filedata(
+    target_file: PathBuf,
+    location: &LocationCategory,
+    configuration: &ApiConfig,
+) -> Result<FileData> {
     log::info!("Getting file data");
     let modified_time = target_file
         .metadata()
@@ -327,22 +329,34 @@ fn _get_filedata(target_file: PathBuf, location: &LocationCategory, configuratio
         .map(|dur| dur.as_millis());
 
     Ok(FileData {
-        path: target_file.strip_prefix(configuration.upload_path.as_str())
-        .map_err(|_| Unauthorized(MethodNotAllowedError))?
-        .to_str().map(|path_str| path_str.to_string()).ok_or_else(|| {
-            log::error!("Error converting file path");
-            NotFoundError
-        })?,
-        name: target_file.file_name().map(|path_str| path_str.to_str()).flatten().map(|path_str| path_str.to_string()).ok_or_else(|| {
-            log::error!("Error converting file name");
-            NotFoundError
-        })?,
+        path: target_file
+            .strip_prefix(configuration.upload_path.as_str())
+            .map_err(|_| Unauthorized(MethodNotAllowedError))?
+            .to_str()
+            .map(|path_str| path_str.to_string())
+            .ok_or_else(|| {
+                log::error!("Error converting file path");
+                NotFoundError
+            })?,
+        name: target_file
+            .file_name()
+            .map(|path_str| path_str.to_str())
+            .flatten()
+            .map(|path_str| path_str.to_string())
+            .ok_or_else(|| {
+                log::error!("Error converting file name");
+                NotFoundError
+            })?,
         last_modified: modified_time,
         location_category: location.clone(),
     })
 }
 
-fn _get_print_metadata(target_file: PathBuf, location: &LocationCategory, configuration: &ApiConfig) -> Result<PrintMetadata> {
+fn _get_print_metadata(
+    target_file: PathBuf,
+    location: &LocationCategory,
+    configuration: &ApiConfig,
+) -> Result<PrintMetadata> {
     let file_data = _get_filedata(target_file, location, configuration)?;
     log::info!("Extracting print metadata");
 
@@ -373,7 +387,11 @@ async fn get_file_metadata(
 ) -> Result<Json<PrintMetadata>> {
     let full_file_path = get_file_path(configuration, &file_path, &location)?;
 
-    Ok(Json(_get_print_metadata(full_file_path, &location, configuration)?))
+    Ok(Json(_get_print_metadata(
+        full_file_path,
+        &location,
+        configuration,
+    )?))
 }
 
 #[handler]
@@ -424,7 +442,8 @@ pub async fn start_api(
         .at(
             "/files/:location/:file_path",
             get(get_file).delete(delete_file),
-        ).at(
+        )
+        .at(
             "/files/:location/:file_path/metadata",
             get(get_file_metadata),
         )

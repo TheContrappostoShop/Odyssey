@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read};
+use std::{fs::File, io::Read, path::Path};
 
 use async_trait::async_trait;
 use config::{Config, ConfigError, File as ConfigFile, FileFormat};
@@ -70,7 +70,10 @@ impl PrintFile for Sl1 {
     /// Instantiate the Sl1 from the given file
     fn from_file(file_data: FileData) -> Sl1 {
         log::info!("Loading PrintFile from SL1 {:?}", file_data);
-        let file = File::open(file_data.path.clone()).unwrap();
+
+        let full_path = Path::new(file_data.parent_path.as_str()).join(file_data.path.as_str());
+
+        let file = File::open(full_path).unwrap();
 
         let mut archive = ZipArchive::new(file).unwrap();
 

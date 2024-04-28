@@ -34,23 +34,13 @@ use crate::{
 
 #[handler]
 async fn start_print(
-    URLPath((location, file_name)): URLPath<(LocationCategory, String)>,
+    URLPath((location, file_path)): URLPath<(LocationCategory, String)>,
     Data(operation_sender): Data<&mpsc::Sender<Operation>>,
     Data(configuration): Data<&ApiConfig>,
 ) -> Result<()> {
-    let pathbuf = get_file_path(configuration, &file_name, &location)?;
+    let full_file_path = get_file_path(configuration, &file_path, &location)?;
 
-    let path = pathbuf
-        .into_os_string()
-        .into_string()
-        .map_err(|_| NotFoundError)?;
-
-    let file_data = FileData {
-        name: file_name,
-        path,
-        last_modified: None,
-        location_category: location,
-    };
+    let file_data = _get_filedata(full_file_path, &location, configuration)?;
 
     operation_sender
         .send(Operation::StartPrint { file_data })
@@ -282,10 +272,7 @@ fn get_file_path(
 }
 
 // Since USB paths are specified as a glob, find all and filter to file_name
-fn get_usb_file_path(
-    configuration: &ApiConfig,
-    file_name: &str,
-) -> Result<PathBuf, NotFoundError> {
+fn get_usb_file_path(configuration: &ApiConfig, file_name: &str) -> Result<PathBuf, NotFoundError> {
     let paths = glob(&configuration.usb_glob).map_err(|_| NotFoundError)?;
 
     let path_buf = paths
@@ -327,6 +314,7 @@ fn _get_filedata(
         .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
         .map(|dur| dur.as_millis());
 
+    // TODO handle USB _get_filedata
     Ok(FileData {
         path: target_file
             .strip_prefix(configuration.upload_path.as_str())
@@ -347,6 +335,7 @@ fn _get_filedata(
             })?,
         last_modified: modified_time,
         location_category: location.clone(),
+        parent_path: configuration.upload_path.clone(),
     })
 }
 
@@ -394,7 +383,7 @@ async fn get_file_metadata(
 
 #[handler]
 async fn delete_file(
-    URLPath((_location, _file_name)): URLPath<(LocationCategory, String)>,
+    URLPath((_location, _file_path)): URLPath<(LocationCategory, String)>,
     Data(_configuration): Data<&ApiConfig>,
 ) -> Result<Json<FileData>> {
     Err(NotImplemented(MethodNotAllowedError))

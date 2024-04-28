@@ -13,6 +13,7 @@ pub struct FileData {
     pub name: String,
     pub last_modified: Option<u128>,
     pub location_category: LocationCategory,
+    pub parent_path: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -154,8 +154,14 @@ const DEFAULT_PAGE_SIZE: usize = 100;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocationParams {
-    category: LocationCategory,
+    location: LocationCategory,
     subdirectory: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileParams {
+    location: Option<LocationCategory>,
+    file_path: String,
 }
 
 #[handler]
@@ -166,7 +172,7 @@ async fn get_files(
 ) -> Result<Json<FilesResponse>> {
     let location = location.map_or(
         LocationParams {
-            category: LocationCategory::Local,
+            location: LocationCategory::Local,
             subdirectory: None,
         },
         |Query(loc_params)| loc_params,
@@ -182,7 +188,7 @@ async fn get_files(
 
     log::info!("Getting files in {:?}, {:?}", location, page_params);
 
-    match location.category {
+    match location.location {
         LocationCategory::Local => {
             _get_local_files(location.subdirectory, page_params, configuration)
         }
@@ -352,9 +358,17 @@ fn _get_print_metadata(
 
 #[handler]
 async fn get_file(
-    URLPath((location, file_path)): URLPath<(LocationCategory, String)>,
+    file_params: Result<Query<FileParams>>,
     Data(configuration): Data<&ApiConfig>,
 ) -> Result<Vec<u8>> {
+    let file_params = file_params.map(|Query(params)| params)?;
+
+    let location = file_params.location.unwrap_or(LocationCategory::Local);
+
+    let file_path = file_params.file_path;
+
+    log::info!("Getting file {:?} in {:?}", file_path, location);
+
     let full_file_path = get_file_path(configuration, &file_path, &location)?;
 
     let ret = File::open(full_file_path)
@@ -369,10 +383,23 @@ async fn get_file(
 
 #[handler]
 async fn get_file_metadata(
-    URLPath((location, file_path)): URLPath<(LocationCategory, String)>,
+    file_params: Result<Query<FileParams>>,
     Data(configuration): Data<&ApiConfig>,
 ) -> Result<Json<PrintMetadata>> {
+    let file_params = file_params.map(|Query(params)| params)?;
+
+    let location = file_params.location.unwrap_or(LocationCategory::Local);
+
+    let file_path = file_params.file_path;
+
+    log::info!(
+        "Getting file metadata from {:?} in {:?}",
+        file_path,
+        location
+    );
     let full_file_path = get_file_path(configuration, &file_path, &location)?;
+
+    log::info!("full path: {:?}", full_file_path);
 
     Ok(Json(_get_print_metadata(
         full_file_path,
@@ -383,7 +410,7 @@ async fn get_file_metadata(
 
 #[handler]
 async fn delete_file(
-    URLPath((_location, _file_path)): URLPath<(LocationCategory, String)>,
+    _file_params: Result<Query<FileParams>>,
     Data(_configuration): Data<&ApiConfig>,
 ) -> Result<Json<FileData>> {
     Err(NotImplemented(MethodNotAllowedError))
@@ -426,14 +453,8 @@ pub async fn start_api(
         .at("/print/resume", post(resume_print))
         .at("/shutdown", post(shutdown))
         .at("/files", get(get_files).post(upload_file))
-        .at(
-            "/files/:location/:file_path",
-            get(get_file).delete(delete_file),
-        )
-        .at(
-            "/files/:location/:file_path/metadata",
-            get(get_file_metadata),
-        )
+        .at("/file", get(get_file).delete(delete_file))
+        .at("/file/metadata", get(get_file_metadata))
         .data(operation_sender)
         .data(state_ref.clone())
         .data(configuration.clone()); //.catch_error(f);

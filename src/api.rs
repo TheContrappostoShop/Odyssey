@@ -34,10 +34,16 @@ use crate::{
 
 #[handler]
 async fn start_print(
-    URLPath((location, file_path)): URLPath<(LocationCategory, String)>,
+    file_params: Result<Query<FileParams>>,
     Data(operation_sender): Data<&mpsc::Sender<Operation>>,
     Data(configuration): Data<&ApiConfig>,
 ) -> Result<()> {
+    let file_params = file_params.map(|Query(params)| params)?;
+
+    let location = file_params.location.unwrap_or(LocationCategory::Local);
+
+    let file_path = file_params.file_path;
+
     let full_file_path = get_file_path(configuration, &file_path, &location)?;
 
     let file_data = _get_filedata(full_file_path, &location, configuration)?;
@@ -447,7 +453,7 @@ pub async fn start_api(
     let app = Route::new()
         .at("/status", get(get_status))
         .at("/manual", post(manual_control))
-        .at("/print/start/:location/:file_path", post(start_print))
+        .at("/print/start", post(start_print))
         .at("/print/cancel", post(cancel_print))
         .at("/print/pause", post(pause_print))
         .at("/print/resume", post(resume_print))

@@ -2,12 +2,15 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 
+use crate::api_objects::FileData;
+use crate::api_objects::PhysicalState;
+use crate::api_objects::PrintMetadata;
+use crate::api_objects::PrinterState;
+use crate::api_objects::PrinterStatus;
 use crate::configuration::*;
 use crate::display::*;
-use crate::printfile::FileData;
 use crate::printfile::Layer;
 use crate::printfile::PrintFile;
-use crate::printfile::PrintMetadata;
 use crate::sl1::*;
 use tokio::time::{interval, sleep, Duration};
 
@@ -29,7 +32,16 @@ impl<T: HardwareControl> Printer<T> {
             config,
             display,
             hardware_controller,
-            state: PrinterState::Shutdown {},
+            state: PrinterState {
+                print_data: None,
+                paused: None,
+                layer: None,
+                physical_state: PhysicalState {
+                    z: 0.0,
+                    curing: false,
+                },
+                status: PrinterStatus::Shutdown,
+            },
             operation_channel: mpsc::channel(100),
             status_channel: broadcast::channel(100),
         }
@@ -72,8 +84,10 @@ impl<T: HardwareControl> Printer<T> {
             // Run any requested operations that may change the printer state
             self.printing_operation_handler().await;
 
-            match self.state {
-                PrinterState::Printing { paused, layer, .. } => {
+            match self.state.status {
+                PrinterStatus::Printing => {
+                    let paused = self.state.paused.unwrap();
+                    let layer = self.state.layer.unwrap();
                     if paused {
                         pause_interv.tick().await;
                         continue;
@@ -236,81 +250,62 @@ impl<T: HardwareControl> Printer<T> {
         self.update_paused(false).await;
     }
 
-    // Retrieve the current physical state
-    fn get_physical_state(&self) -> PhysicalState {
-        match self.state {
-            PrinterState::Idle { physical_state } => physical_state,
-            PrinterState::Printing { physical_state, .. } => physical_state,
-            PrinterState::Shutdown {} => PhysicalState {
-                z: f32::MAX,
-                curing: false,
-            },
-        }
-    }
-
     fn _get_layer(&self) -> usize {
-        match self.state {
-            PrinterState::Printing { layer, .. } => layer,
-            _ => 0,
-        }
+        self.state.layer.unwrap_or(0)
     }
 
     fn get_file_data(&self) -> Option<FileData> {
-        match &self.state {
-            PrinterState::Printing { print_data, .. } => Some(print_data.file_data.clone()),
-            _ => None,
-        }
+        self.state
+            .print_data
+            .clone()
+            .map(|print_data| print_data.file_data)
     }
 
     async fn enter_printing_state(&mut self, print_data: PrintMetadata) {
         log::info!("Entering printing state");
-        match self.state {
-            PrinterState::Idle { physical_state } => {
+        match self.state.status {
+            PrinterStatus::Idle => {
                 log::debug!("Transitioning from Idle State");
-                self.state = PrinterState::Printing {
-                    print_data,
-                    paused: false,
-                    layer: 0,
-                    physical_state,
+                self.state = PrinterState {
+                    print_data: Some(print_data),
+                    paused: Some(false),
+                    layer: Some(0),
+                    physical_state: self.state.physical_state,
+                    status: PrinterStatus::Printing,
                 };
             }
-            PrinterState::Printing { .. } => {
+            PrinterStatus::Printing => {
                 log::debug!("Already in printing state!");
             }
-            PrinterState::Shutdown {} => {
+            PrinterStatus::Shutdown => {
                 log::debug!("Cannot start print, Odyssey shutdown");
             }
         }
     }
 
     async fn update_physical_state(&mut self, new_physical_state: PhysicalState) {
-        match self.state {
-            PrinterState::Printing {
-                ref mut physical_state,
-                ..
-            } => {
-                *physical_state = new_physical_state;
+        match self.state.status {
+            PrinterStatus::Printing => {
+                self.state.physical_state = new_physical_state;
             }
-            PrinterState::Idle {
-                ref mut physical_state,
-            } => {
-                *physical_state = new_physical_state;
+            PrinterStatus::Idle => {
+                self.state.physical_state = new_physical_state;
             }
-            PrinterState::Shutdown {} => (),
+            PrinterStatus::Shutdown {} => (),
         }
         self.send_status().await;
     }
 
     async fn update_paused(&mut self, new_pause: bool) {
-        if let PrinterState::Printing { ref mut paused, .. } = self.state {
-            *paused = new_pause;
+        if matches!(self.state.status, PrinterStatus::Printing) {
+            self.state.paused = Some(new_pause);
         }
         self.send_status().await;
     }
 
     async fn update_layer(&mut self, new_layer: usize) {
-        if let PrinterState::Printing { ref mut layer, .. } = self.state {
-            *layer = new_layer;
+        if matches!(self.state.status, PrinterStatus::Printing) {
+            self.state.layer = Some(new_layer);
         }
         self.send_status().await;
     }
@@ -366,7 +361,13 @@ impl<T: HardwareControl> Printer<T> {
                 log::info!("Unable to execute shutdown gcode")
             }
         }
-        self.state = PrinterState::Shutdown {};
+        self.state.status = PrinterStatus::Shutdown;
+        self.state.paused = None;
+        self.state.print_data = None;
+        self.state.physical_state = PhysicalState {
+            z: f32::MAX,
+            curing: false,
+        }
     }
 
     pub async fn get_operation_sender(&mut self) -> mpsc::Sender<Operation> {
@@ -388,10 +389,10 @@ impl<T: HardwareControl> Printer<T> {
         self.hardware_controller.initialize().await;
 
         loop {
-            match self.state {
-                PrinterState::Idle { .. } => self.idle_event_loop().await,
-                PrinterState::Printing { .. } => self.print_event_loop().await,
-                PrinterState::Shutdown {} => self.shutdown_event_loop().await,
+            match self.state.status {
+                PrinterStatus::Idle => self.idle_event_loop().await,
+                PrinterStatus::Printing => self.print_event_loop().await,
+                PrinterStatus::Shutdown => self.shutdown_event_loop().await,
             }
         }
     }
@@ -402,8 +403,8 @@ impl<T: HardwareControl> Printer<T> {
         loop {
             self.shutdown_operation_handler().await;
 
-            match self.state {
-                PrinterState::Shutdown {} => {
+            match self.state.status {
+                PrinterStatus::Shutdown => {
                     if self.hardware_controller.is_ready().await {
                         self.boot().await;
                     } else {
@@ -428,14 +429,15 @@ impl<T: HardwareControl> Printer<T> {
     }
 
     async fn set_idle(&mut self) {
-        self.state = PrinterState::Idle {
-            physical_state: self.get_physical_state(),
-        };
+        self.state.status = PrinterStatus::Idle;
+        self.state.layer = None;
+        self.state.paused = None;
         self.send_status().await;
     }
 
     async fn update_idle_state(&mut self, physical_state: PhysicalState) {
-        self.state = PrinterState::Idle { physical_state };
+        self.state.status = PrinterStatus::Idle;
+        self.state.physical_state = physical_state;
         self.send_status().await;
     }
 
@@ -472,8 +474,8 @@ impl<T: HardwareControl> Printer<T> {
         loop {
             self.idle_operation_handler().await;
 
-            match self.state {
-                PrinterState::Idle { .. } => {
+            match self.state.status {
+                PrinterStatus::Idle => {
                     interv.tick().await;
                 }
                 _ => break,
@@ -491,26 +493,6 @@ impl Frame {
         }
         None
     }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct PhysicalState {
-    pub z: f32,
-    pub curing: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PrinterState {
-    Printing {
-        print_data: PrintMetadata,
-        paused: bool,
-        layer: usize,
-        physical_state: PhysicalState,
-    },
-    Idle {
-        physical_state: PhysicalState,
-    },
-    Shutdown {},
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

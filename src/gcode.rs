@@ -8,8 +8,9 @@ use serialport::{ClearBuffer, SerialPort, SerialPortBuilder, TTYPort};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::time::{interval, sleep, Duration};
 
+use crate::api_objects::PhysicalState;
 use crate::configuration::{Configuration, GcodeConfig};
-use crate::printer::{HardwareControl, PhysicalState};
+use crate::printer::HardwareControl;
 
 pub struct Gcode {
     pub config: GcodeConfig,

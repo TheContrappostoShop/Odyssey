@@ -2,7 +2,7 @@ use std::{
     ffi::OsStr,
     fs::File,
     io::{Read, Write},
-    ops::Deref,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
@@ -12,18 +12,18 @@ use glob::glob;
 use itertools::Itertools;
 use poem::{
     error::{
-        MethodNotAllowedError, NotFoundError, NotImplemented, ServiceUnavailable, Unauthorized,
+        BadRequest, GetDataError, MethodNotAllowedError, NotFoundError, NotImplemented,
+        ServiceUnavailable, Unauthorized,
     },
-    get, handler,
     listener::TcpListener,
-    post,
-    web::{Data, Multipart, Path as URLPath, Query},
+    web::Data,
     EndpointExt, Result, Route, Server,
 };
 use poem_openapi::{
+    param::Query,
     payload::{Binary, Json},
-    types::{Any, ToJSON, Type},
-    Enum, NewType, Object, OpenApi, OpenApiService, ResponseContent,
+    types::multipart::Upload,
+    Multipart, Object, OpenApi, OpenApiService,
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -32,166 +32,43 @@ use tokio::{
 };
 
 use crate::{
+    api_objects::{
+        FileData, LocationCategory, PhysicalState, PrintMetadata, PrinterState, PrinterStatus,
+    },
     configuration::ApiConfig,
-    printer::{Operation, PhysicalState, PrinterState},
-    printfile::{FileData, LocationCategory, PrintFile, PrintMetadata},
+    printer::Operation,
+    printfile::PrintFile,
     sl1::Sl1,
 };
 
-struct Api;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ZControl {
-    z: f32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CureControl {
-    cure: bool,
+#[derive(Debug, Multipart)]
+struct UploadPayload {
+    file: Upload,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct FilesResponse {
-    pub files: Vec<PrintMetadataResponse>,
-    pub dirs: Vec<FileDataResponse>,
+    pub files: Vec<PrintMetadata>,
+    pub dirs: Vec<FileData>,
     pub next_index: Option<usize>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PageParams {
-    page_index: usize,
-    page_size: usize,
 }
 
 const DEFAULT_PAGE_INDEX: usize = 0;
 const DEFAULT_PAGE_SIZE: usize = 100;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LocationParams {
-    location: LocationCategory,
-    subdirectory: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FileParams {
-    location: Option<LocationCategory>,
-    file_path: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Object)]
-pub struct PrintingStatus {
-    print_data: PrintMetadataResponse,
-    paused: bool,
-    layer: usize,
-    physical_state: PhysicalStateResponse,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Object)]
-pub struct PrinterStateResponse {
-    print_data: Option<PrintMetadataResponse>,
-    paused: Option<bool>,
-    layer: Option<usize>,
-    physical_state: Option<PhysicalStateResponse>,
-}
-impl PrinterStateResponse {
-    fn from_printerstate(state: PrinterState) -> PrinterStateResponse {
-        match state {
-            PrinterState::Printing {
-                print_data,
-                paused,
-                layer,
-                physical_state,
-            } => PrinterStateResponse {
-                print_data: Some(PrintMetadataResponse::from_printmetadata(print_data)),
-                paused: Some(paused),
-                layer: Some(layer),
-                physical_state: Some(PhysicalStateResponse {
-                    z: physical_state.z,
-                    curing: physical_state.curing,
-                }),
-            },
-            PrinterState::Idle { physical_state } => PrinterStateResponse {
-                print_data: None,
-                paused: None,
-                layer: None,
-                physical_state: Some(PhysicalStateResponse {
-                    z: physical_state.z,
-                    curing: physical_state.curing,
-                }),
-            },
-            PrinterState::Shutdown {} => PrinterStateResponse {
-                print_data: None,
-                paused: None,
-                layer: None,
-                physical_state: None,
-            },
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Object)]
-pub struct PrintMetadataResponse {
-    pub file_data: FileDataResponse,
-    pub used_material: f32,
-    pub print_time: f32,
-    pub layer_height: f32,
-    pub layer_count: usize,
-}
-impl PrintMetadataResponse {
-    fn from_printmetadata(printmetadata: PrintMetadata) -> PrintMetadataResponse {
-        PrintMetadataResponse {
-            file_data: FileDataResponse::from_filedata(printmetadata.file_data),
-            used_material: printmetadata.used_material,
-            print_time: printmetadata.print_time,
-            layer_height: printmetadata.layer_height,
-            layer_count: printmetadata.layer_count,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Object)]
-pub struct FileDataResponse {
-    pub path: String,
-    pub name: String,
-    pub last_modified: Option<String>,
-    pub location_category: String,
-    pub parent_path: String,
-}
-impl FileDataResponse {
-    fn from_filedata(filedata: FileData) -> FileDataResponse {
-        FileDataResponse {
-            path: filedata.path,
-            name: filedata.name,
-            last_modified: filedata.last_modified.map(|last| last.to_string()),
-            location_category: match filedata.location_category {
-                LocationCategory::Local => "Local".to_string(),
-                LocationCategory::Usb => "Usb".to_string(),
-            },
-            parent_path: filedata.parent_path,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Object)]
-pub struct PhysicalStateResponse {
-    pub z: f32,
-    pub curing: bool,
-}
+struct Api;
 
 #[OpenApi]
 impl Api {
     #[oai(path = "/print/start", method = "post")]
     async fn start_print(
         &self,
-        file_params: Result<Query<FileParams>>,
+        Query(file_path): Query<String>,
+        Query(location): Query<Option<LocationCategory>>,
         Data(operation_sender): Data<&mpsc::Sender<Operation>>,
         Data(configuration): Data<&ApiConfig>,
     ) -> Result<()> {
-        let file_params = file_params.map(|Query(params)| params)?;
-
-        let location = file_params.location.unwrap_or(LocationCategory::Local);
-
-        let file_path = file_params.file_path;
+        let location = location.unwrap_or(LocationCategory::Local);
 
         let full_file_path = Api::get_file_path(configuration, &file_path, &location)?;
 
@@ -248,28 +125,26 @@ impl Api {
     async fn get_status(
         &self,
         Data(state_ref): Data<&Arc<RwLock<PrinterState>>>,
-    ) -> Json<PrinterStateResponse> {
-        Json(PrinterStateResponse::from_printerstate(
-            state_ref.read().await.clone(),
-        ))
+    ) -> Json<PrinterState> {
+        Json(state_ref.read().await.clone())
     }
 
     #[oai(path = "/manual", method = "post")]
     async fn manual_control(
         &self,
-        z: Result<Query<ZControl>>,
-        cure: Result<Query<CureControl>>,
+        z: Query<Option<f32>>,
+        cure: Query<Option<bool>>,
         Data(operation_sender): Data<&mpsc::Sender<Operation>>,
         Data(_state_ref): Data<&Arc<RwLock<PrinterState>>>,
     ) -> Result<()> {
-        if let Ok(Query(ZControl { z })) = z {
+        if let Query(Some(z)) = z {
             operation_sender
                 .send(Operation::ManualMove { z })
                 .await
                 .map_err(ServiceUnavailable)?;
         }
 
-        if let Ok(Query(CureControl { cure })) = cure {
+        if let Query(Some(cure)) = cure {
             operation_sender
                 .send(Operation::ManualCure { cure })
                 .await
@@ -280,58 +155,62 @@ impl Api {
     }
 
     #[oai(path = "/files", method = "post")]
-    async fn upload_file(&self, mut multipart: Multipart, Data(configuration): Data<&ApiConfig>) {
+    async fn upload_file(
+        &self,
+        file_upload: UploadPayload,
+        Data(configuration): Data<&ApiConfig>,
+    ) -> Result<()> {
         log::info!("Uploading file");
-        while let Ok(Some(field)) = multipart.next_field().await {
-            let file_name = field
-                .file_name()
-                .map(ToString::to_string)
-                .expect("File name not found");
-            if let Ok(bytes) = field.bytes().await {
-                let mut f = File::create(configuration.upload_path.clone() + "/" + &file_name)
-                    .expect("Could not create new file");
-                f.write_all(bytes.as_slice())
-                    .expect("Failed to write file contents");
-            }
-        }
+
+        let file_name = file_upload
+            .file
+            .file_name()
+            .map(|s| s.to_string().clone())
+            .ok_or(BadRequest(GetDataError("Could not get file name")))?;
+
+        let bytes = file_upload.file.into_vec().await.map_err(BadRequest)?;
+
+        let mut f = File::create(configuration.upload_path.clone() + "/" + &file_name)
+            .expect("Could not create new file");
+        f.write_all(bytes.as_slice())
+            .expect("Failed to write file contents");
+
+        Ok(())
     }
 
     #[oai(path = "/files", method = "get")]
     async fn get_files(
         &self,
-        location: Result<Query<LocationParams>>,
-        page_params: Result<Query<PageParams>>,
+        Query(subdirectory): Query<Option<String>>,
+        Query(location): Query<Option<LocationCategory>>,
+        Query(page_index): Query<Option<usize>>,
+        Query(page_size): Query<Option<usize>>,
         Data(configuration): Data<&ApiConfig>,
     ) -> Result<Json<FilesResponse>> {
-        let location = location.map_or(
-            LocationParams {
-                location: LocationCategory::Local,
-                subdirectory: None,
-            },
-            |Query(loc_params)| loc_params,
+        let location = location.unwrap_or(LocationCategory::Local);
+        let page_index = page_index.unwrap_or(DEFAULT_PAGE_INDEX);
+        let page_size = page_size.unwrap_or(DEFAULT_PAGE_SIZE);
+
+        log::info!(
+            "Getting files in location={:?}, subdirectory={:?}, page_index={:?}, page_size={:?}",
+            location,
+            subdirectory,
+            page_index,
+            page_size
         );
 
-        let page_params = page_params.map_or(
-            PageParams {
-                page_index: DEFAULT_PAGE_INDEX,
-                page_size: DEFAULT_PAGE_SIZE,
-            },
-            |Query(params)| params,
-        );
-
-        log::info!("Getting files in {:?}, {:?}", location, page_params);
-
-        match location.location {
+        match location {
             LocationCategory::Local => {
-                Api::_get_local_files(location.subdirectory, page_params, configuration)
+                Api::_get_local_files(subdirectory, page_index, page_size, configuration)
             }
-            LocationCategory::Usb => Api::_get_usb_files(page_params, configuration),
+            LocationCategory::Usb => Api::_get_usb_files(page_index, page_size, configuration),
         }
     }
 
     fn _get_local_files(
         subdirectory: Option<String>,
-        page_params: PageParams,
+        page_index: usize,
+        page_size: usize,
         configuration: &ApiConfig,
     ) -> Result<Json<FilesResponse>> {
         let directory = subdirectory.unwrap_or("".to_string());
@@ -354,12 +233,12 @@ impl Api {
             // TODO add sorting here
             .filter(|f| f.is_dir() || f.extension().and_then(OsStr::to_str).eq(&Some("sl1")));
 
-        let chunks = files_vec.chunks(page_params.page_size);
+        let chunks = files_vec.chunks(page_size);
 
         let mut chunks_iterator = chunks.into_iter();
 
         let paths = chunks_iterator
-            .nth(page_params.page_index)
+            .nth(page_index)
             .map_or(Vec::new(), |dirs| dirs.collect_vec());
 
         let dirs = paths
@@ -368,7 +247,6 @@ impl Api {
             .flat_map(|f| {
                 Api::_get_filedata(f.clone(), &LocationCategory::Local, configuration).ok()
             })
-            .map(|f| FileDataResponse::from_filedata(f))
             .collect_vec();
         let files = paths
             .iter()
@@ -376,11 +254,9 @@ impl Api {
             .flat_map(|f| {
                 Api::_get_print_metadata(f.clone(), &LocationCategory::Local, configuration).ok()
             })
-            .map(|f| PrintMetadataResponse::from_printmetadata(f))
             .collect_vec();
 
-        let next_index =
-            Some(page_params.page_index + 1).filter(|_| chunks_iterator.next().is_some());
+        let next_index = Some(page_index + 1).filter(|_| chunks_iterator.next().is_some());
 
         Ok(Json(FilesResponse {
             files,
@@ -390,7 +266,8 @@ impl Api {
     }
 
     fn _get_usb_files(
-        _page_params: PageParams,
+        _page_index: usize,
+        _page_size: usize,
         _configuration: &ApiConfig,
     ) -> Result<Json<FilesResponse>> {
         Err(NotImplemented(MethodNotAllowedError))
@@ -461,7 +338,9 @@ impl Api {
             .ok()
             .and_then(|meta| meta.modified().ok())
             .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-            .map(|dur| dur.as_millis());
+            .map(|dur| dur.as_secs());
+
+        let file_size = target_file.metadata().ok().map(|meta| meta.size());
 
         // TODO handle USB _get_filedata
         Ok(FileData {
@@ -483,6 +362,7 @@ impl Api {
                     NotFoundError
                 })?,
             last_modified: modified_time,
+            file_size: file_size,
             location_category: location.clone(),
             parent_path: configuration.upload_path.clone(),
         })
@@ -502,14 +382,11 @@ impl Api {
     #[oai(path = "/file", method = "get")]
     async fn get_file(
         &self,
-        file_params: Result<Query<FileParams>>,
+        Query(file_path): Query<String>,
+        Query(location): Query<Option<LocationCategory>>,
         Data(configuration): Data<&ApiConfig>,
     ) -> Result<Binary<Vec<u8>>> {
-        let file_params = file_params.map(|Query(params)| params)?;
-
-        let location = file_params.location.unwrap_or(LocationCategory::Local);
-
-        let file_path = file_params.file_path;
+        let location = location.unwrap_or(LocationCategory::Local);
 
         log::info!("Getting file {:?} in {:?}", file_path, location);
 
@@ -522,20 +399,17 @@ impl Api {
             })
             .map_err(|_| NotFoundError);
 
-        ret.map(|vec| Binary(vec)).map_err(|err| err.into())
+        ret.map(Binary).map_err(|err| err.into())
     }
 
     #[oai(path = "/file/metadata", method = "get")]
     async fn get_file_metadata(
         &self,
-        file_params: Result<Query<FileParams>>,
+        Query(file_path): Query<String>,
+        Query(location): Query<Option<LocationCategory>>,
         Data(configuration): Data<&ApiConfig>,
-    ) -> Result<Json<PrintMetadataResponse>> {
-        let file_params = file_params.map(|Query(params)| params)?;
-
-        let location = file_params.location.unwrap_or(LocationCategory::Local);
-
-        let file_path = file_params.file_path;
+    ) -> Result<Json<PrintMetadata>> {
+        let location = location.unwrap_or(LocationCategory::Local);
 
         log::info!(
             "Getting file metadata from {:?} in {:?}",
@@ -546,17 +420,20 @@ impl Api {
 
         log::info!("full path: {:?}", full_file_path);
 
-        Ok(Json(PrintMetadataResponse::from_printmetadata(
-            Api::_get_print_metadata(full_file_path, &location, configuration)?,
-        )))
+        Ok(Json(Api::_get_print_metadata(
+            full_file_path,
+            &location,
+            configuration,
+        )?))
     }
 
     #[oai(path = "/file", method = "post")]
     async fn delete_file(
         &self,
-        _file_params: Result<Query<FileParams>>,
+        Query(_file_path): Query<String>,
+        Query(_location): Query<Option<String>>,
         Data(_configuration): Data<&ApiConfig>,
-    ) -> Result<Json<FileDataResponse>> {
+    ) -> Result<Json<FileData>> {
         Err(NotImplemented(MethodNotAllowedError))
     }
 }
@@ -585,25 +462,19 @@ pub async fn start_api(
     operation_sender: mpsc::Sender<Operation>,
     state_receiver: broadcast::Receiver<PrinterState>,
 ) {
-    let state_ref = Arc::new(RwLock::new(PrinterState::Shutdown {}));
+    let state_ref = Arc::new(RwLock::new(PrinterState {
+        print_data: None,
+        paused: None,
+        layer: None,
+        physical_state: PhysicalState {
+            z: 0.0,
+            curing: false,
+        },
+        status: PrinterStatus::Shutdown,
+    }));
 
     tokio::spawn(run_state_listener(state_receiver, state_ref.clone()));
-    /*
-        let app = Route::new()
-            .at("/status", get(get_status))
-            .at("/manual", post(manual_control))
-            .at("/print/start", post(start_print))
-            .at("/print/cancel", post(cancel_print))
-            .at("/print/pause", post(pause_print))
-            .at("/print/resume", post(resume_print))
-            .at("/shutdown", post(shutdown))
-            .at("/files", get(get_files).post(upload_file))
-            .at("/file", get(get_file).delete(delete_file))
-            .at("/file/metadata", get(get_file_metadata))
-            .data(operation_sender)
-            .data(state_ref.clone())
-            .data(configuration.clone()); //.catch_error(f);
-    */
+
     let port = configuration.port.to_string();
     let addr = format!("0.0.0.0:{port}");
 

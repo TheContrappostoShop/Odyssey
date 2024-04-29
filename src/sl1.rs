@@ -6,7 +6,10 @@ use itertools::Itertools;
 use serde::Deserialize;
 use zip::ZipArchive;
 
-use crate::printfile::{FileData, Layer, PrintFile, PrintMetadata};
+use crate::{
+    api_objects::{FileData, PrintMetadata},
+    printfile::{Layer, PrintFile},
+};
 
 const CONFIG_FILE: &str = "config.ini";
 

@@ -9,6 +9,12 @@ pub enum LocationCategory {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct FileData {
+    pub name: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Object)]
+pub struct FileMetadata {
     pub path: String,
     pub name: String,
     pub last_modified: Option<u64>,
@@ -19,7 +25,7 @@ pub struct FileData {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct PrintMetadata {
-    pub file_data: FileData,
+    pub file_data: FileMetadata,
     pub used_material: f32,
     pub print_time: f32,
     pub layer_height: f32,

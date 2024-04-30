@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 
-use crate::api_objects::FileData;
+use crate::api_objects::FileMetadata;
 use crate::api_objects::PhysicalState;
 use crate::api_objects::PrintMetadata;
 use crate::api_objects::PrinterState;
@@ -225,7 +225,7 @@ impl<T: HardwareControl> Printer<T> {
         self.update_layer(layer).await;
     }
 
-    pub async fn start_print(&mut self, file_data: FileData) {
+    pub async fn start_print(&mut self, file_data: FileMetadata) {
         log::info!("Starting Print");
 
         let print_data = Sl1::from_file(file_data).get_metadata();
@@ -257,7 +257,7 @@ impl<T: HardwareControl> Printer<T> {
         self.state.layer.unwrap_or(0)
     }
 
-    fn get_file_data(&self) -> Option<FileData> {
+    fn get_file_data(&self) -> Option<FileMetadata> {
         self.state
             .print_data
             .clone()
@@ -500,7 +500,7 @@ impl Frame {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Operation {
-    StartPrint { file_data: FileData },
+    StartPrint { file_data: FileMetadata },
     StopPrint,
     PausePrint,
     ResumePrint,

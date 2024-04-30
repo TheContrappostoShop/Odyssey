@@ -1,7 +1,9 @@
+use std::io::Error;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::api_objects::{FileData, PrintMetadata};
+use crate::api_objects::{FileData, FileMetadata, PrintMetadata};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Layer {
@@ -12,13 +14,14 @@ pub struct Layer {
 
 #[async_trait]
 pub trait PrintFile {
-    fn from_file(file_data: FileData) -> Self
+    fn from_file(file_data: FileMetadata) -> Self
     where
         Self: Sized;
     async fn get_layer_data(&mut self, index: usize) -> Option<Layer>;
     fn get_layer_count(&self) -> usize;
     fn get_layer_height(&self) -> f32;
     fn get_metadata(&self) -> PrintMetadata;
+    fn get_thumbnail(&mut self) -> Result<FileData, Error>;
     // Optional fields not present in every file type
     fn get_lift(&self) -> Option<f32> {
         None

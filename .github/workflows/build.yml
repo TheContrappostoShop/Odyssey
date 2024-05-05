@@ -32,7 +32,7 @@ jobs:
           mv target/armv7-unknown-linux-gnueabihf/release/odyssey odyssey_armv7
           cp default.yaml odyssey_armv7
           cp apiHelper.py odyssey_armv7
-          tar -czvf odyssey_armv7.tar.gz odyssey_armv7
+          tar -czvf odyssey_armv7.tar.gz -C odyssey_armv7 .
       
       - name: upload armv7 artifact
         uses: actions/upload-artifact@v4.3.1
@@ -47,7 +47,7 @@ jobs:
           mv target/aarch64-unknown-linux-gnu/release/odyssey odyssey_aarch64
           cp default.yaml odyssey_aarch64
           cp apiHelper.py odyssey_aarch64
-          tar -czvf odyssey_aarch64.tar.gz odyssey_aarch64
+          tar -czvf odyssey_aarch64.tar.gz -C odyssey_aarch64 .
       
       - name: upload aarch64 artifact
         uses: actions/upload-artifact@v4.3.1
@@ -62,7 +62,7 @@ jobs:
           mv target/x86_64-unknown-linux-gnu/release/odyssey odyssey_x86_64
           cp default.yaml odyssey_x86_64
           cp apiHelper.py odyssey_x86_64
-          tar -czvf odyssey_x86_64.tar.gz odyssey_x86_64
+          tar -czvf odyssey_x86_64.tar.gz -C odyssey_x86_64 .
       
       - name: upload x86_64 artifact
         uses: actions/upload-artifact@v4.3.1

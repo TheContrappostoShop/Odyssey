@@ -220,8 +220,10 @@ impl<T: HardwareControl> Printer<T> {
 
     async fn end_print(&mut self) {
         if let Ok(physical_state) = self.hardware_controller.end_print().await {
-            self.hardware_controller.remove_print_variable("total_layers".to_string());
-            self.hardware_controller.remove_print_variable("layer".to_string());
+            self.hardware_controller
+                .remove_print_variable("total_layers".to_string());
+            self.hardware_controller
+                .remove_print_variable("layer".to_string());
             self.update_idle_state(physical_state).await;
             log::info!("Print complete.");
         } else {

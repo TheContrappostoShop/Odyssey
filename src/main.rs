@@ -11,6 +11,7 @@ use tokio::runtime::{Builder, Runtime};
 use crate::{gcode::Gcode, printer::Printer};
 
 mod api;
+mod api_objects;
 mod configuration;
 mod display;
 mod gcode;

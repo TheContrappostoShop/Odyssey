@@ -1,29 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum LocationCategory {
-    Local,
-    Usb,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FileData {
-    pub path: String,
-    pub name: String,
-    pub last_modified: Option<u128>,
-    pub location_category: LocationCategory,
-    pub parent_path: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PrintMetadata {
-    pub file_data: FileData,
-    pub used_material: f32,
-    pub print_time: f32,
-    pub layer_height: f32,
-    pub layer_count: usize,
-}
+use crate::api_objects::{FileData, PrintMetadata};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Layer {

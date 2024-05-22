@@ -1,4 +1,8 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{
+    fs::File,
+    io::{Error, Read},
+    path::Path,
+};
 
 use async_trait::async_trait;
 use config::{Config, ConfigError, File as ConfigFile, FileFormat};
@@ -7,11 +11,12 @@ use serde::Deserialize;
 use zip::ZipArchive;
 
 use crate::{
-    api_objects::{FileData, PrintMetadata},
+    api_objects::{FileData, FileMetadata, PrintMetadata},
     printfile::{Layer, PrintFile},
 };
 
 const CONFIG_FILE: &str = "config.ini";
+const THUMBNAIL_FILE: &str = "thumbnail/thumbnail400x400.png";
 
 /// PrintConfig object encompassing the fields stored in `config.ini` inside a `.sl1` file
 #[derive(Debug, Deserialize)]
@@ -71,7 +76,7 @@ pub struct Sl1 {
 #[async_trait]
 impl PrintFile for Sl1 {
     /// Instantiate the Sl1 from the given file
-    fn from_file(file_data: FileData) -> Sl1 {
+    fn from_file(file_data: FileMetadata) -> Sl1 {
         log::info!("Loading PrintFile from SL1 {:?}", file_data);
 
         let full_path = Path::new(file_data.parent_path.as_str()).join(file_data.path.as_str());
@@ -144,5 +149,18 @@ impl PrintFile for Sl1 {
 
     fn get_metadata(&self) -> PrintMetadata {
         self.metadata.clone()
+    }
+
+    fn get_thumbnail(&mut self) -> Result<FileData, Error> {
+        let mut thumbnail_file = self.archive.by_name(THUMBNAIL_FILE)?;
+
+        let mut ret: Vec<u8> = Vec::new();
+
+        thumbnail_file.read_to_end(&mut ret)?;
+
+        Ok(FileData {
+            name: "thumbnail.png".to_string(),
+            data: ret,
+        })
     }
 }

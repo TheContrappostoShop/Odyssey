@@ -1,7 +1,7 @@
 use std::{
     ffi::OsStr,
     fs::File,
-    io::{Read, Write},
+    io::{Error, ErrorKind, Read, Write},
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::Arc,
@@ -12,7 +12,7 @@ use glob::glob;
 use itertools::Itertools;
 use poem::{
     error::{
-        BadRequest, GetDataError, MethodNotAllowedError, NotFoundError, NotImplemented,
+        BadRequest, GetDataError, InternalServerError, MethodNotAllowedError, NotImplemented,
         ServiceUnavailable, Unauthorized,
     },
     listener::TcpListener,
@@ -21,7 +21,7 @@ use poem::{
 };
 use poem_openapi::{
     param::Query,
-    payload::{Binary, Json},
+    payload::{Attachment, Json},
     types::multipart::Upload,
     Multipart, Object, OpenApi, OpenApiService,
 };
@@ -33,7 +33,7 @@ use tokio::{
 
 use crate::{
     api_objects::{
-        FileData, LocationCategory, PhysicalState, PrintMetadata, PrinterState, PrinterStatus,
+        FileMetadata, LocationCategory, PhysicalState, PrintMetadata, PrinterState, PrinterStatus,
     },
     configuration::ApiConfig,
     printer::Operation,
@@ -49,7 +49,7 @@ struct UploadPayload {
 #[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct FilesResponse {
     pub files: Vec<PrintMetadata>,
-    pub dirs: Vec<FileData>,
+    pub dirs: Vec<FileMetadata>,
     pub next_index: Option<usize>,
 }
 
@@ -227,7 +227,7 @@ impl Api {
         let read_dir = full_path.read_dir();
 
         let files_vec = read_dir
-            .map_err(|_| NotFoundError)?
+            .map_err(InternalServerError)?
             .flatten()
             .map(|f| f.path())
             // TODO add sorting here
@@ -285,7 +285,7 @@ impl Api {
         configuration: &ApiConfig,
         file_path: &str,
         location: &LocationCategory,
-    ) -> Result<PathBuf, NotFoundError> {
+    ) -> Result<PathBuf> {
         log::info!("Getting full file path {:?}, {:?}", location, file_path);
 
         match location {
@@ -295,43 +295,37 @@ impl Api {
     }
 
     // Since USB paths are specified as a glob, find all and filter to file_name
-    fn get_usb_file_path(
-        configuration: &ApiConfig,
-        file_name: &str,
-    ) -> Result<PathBuf, NotFoundError> {
-        let paths = glob(&configuration.usb_glob).map_err(|_| NotFoundError)?;
+    fn get_usb_file_path(configuration: &ApiConfig, file_name: &str) -> Result<PathBuf> {
+        let paths = glob(&configuration.usb_glob).map_err(InternalServerError)?;
 
         let path_buf = paths
             .filter_map(|path| path.ok())
             .find(|path| path.ends_with(file_name))
-            .ok_or_else(|| {
-                log::error!("Unable to read USB file");
-                NotFoundError
-            })?;
+            .ok_or(InternalServerError(Error::new(
+                ErrorKind::NotFound,
+                "Unable to find USB file",
+            )))?;
 
         Ok(path_buf)
     }
 
     // For Local files, look directly for specific file
-    fn get_local_file_path(
-        configuration: &ApiConfig,
-        file_path: &str,
-    ) -> Result<PathBuf, NotFoundError> {
+    fn get_local_file_path(configuration: &ApiConfig, file_path: &str) -> Result<PathBuf> {
         let path = Path::new(&configuration.upload_path).join(file_path);
 
-        if path.exists() {
-            Ok(path)
-        } else {
-            log::error!("Unable to find local file {}", file_path);
-            Err(NotFoundError)
-        }
+        path.exists()
+            .then_some(path)
+            .ok_or(InternalServerError(Error::new(
+                ErrorKind::NotFound,
+                "Unable to find local file",
+            )))
     }
 
     fn _get_filedata(
         target_file: PathBuf,
         location: &LocationCategory,
         configuration: &ApiConfig,
-    ) -> Result<FileData> {
+    ) -> Result<FileMetadata> {
         log::info!("Getting file data");
         let modified_time = target_file
             .metadata()
@@ -343,26 +337,26 @@ impl Api {
         let file_size = target_file.metadata().ok().map(|meta| meta.size());
 
         // TODO handle USB _get_filedata
-        Ok(FileData {
+        Ok(FileMetadata {
             path: target_file
                 .strip_prefix(configuration.upload_path.as_str())
-                .map_err(|_| Unauthorized(MethodNotAllowedError))?
+                .map_err(InternalServerError)?
                 .to_str()
                 .map(|path_str| path_str.to_string())
-                .ok_or_else(|| {
-                    log::error!("Error converting file path");
-                    NotFoundError
-                })?,
+                .ok_or(InternalServerError(Error::new(
+                    ErrorKind::NotFound,
+                    "unable to parse file path",
+                )))?,
             name: target_file
                 .file_name()
                 .and_then(|path_str| path_str.to_str())
                 .map(|path_str| path_str.to_string())
-                .ok_or_else(|| {
-                    log::error!("Error converting file name");
-                    NotFoundError
-                })?,
+                .ok_or(InternalServerError(Error::new(
+                    ErrorKind::NotFound,
+                    "Unable to parse file name",
+                )))?,
             last_modified: modified_time,
-            file_size: file_size,
+            file_size,
             location_category: location.clone(),
             parent_path: configuration.upload_path.clone(),
         })
@@ -385,21 +379,29 @@ impl Api {
         Query(file_path): Query<String>,
         Query(location): Query<Option<LocationCategory>>,
         Data(configuration): Data<&ApiConfig>,
-    ) -> Result<Binary<Vec<u8>>> {
+    ) -> Result<Attachment<Vec<u8>>> {
         let location = location.unwrap_or(LocationCategory::Local);
 
         log::info!("Getting file {:?} in {:?}", file_path, location);
 
         let full_file_path = Api::get_file_path(configuration, &file_path, &location)?;
 
-        let ret = File::open(full_file_path)
-            .and_then(|mut file| {
-                let mut data: Vec<u8> = vec![];
-                file.read_to_end(&mut data).map(|_| data)
-            })
-            .map_err(|_| NotFoundError);
+        let file_name = full_file_path
+            .file_name()
+            .and_then(|filestr| filestr.to_str())
+            .ok_or(InternalServerError(Error::new(
+                ErrorKind::NotFound,
+                "unable to parse file path",
+            )))?;
 
-        ret.map(Binary).map_err(|err| err.into())
+        let mut open_file = File::open(full_file_path.clone()).map_err(InternalServerError)?;
+
+        let mut data: Vec<u8> = vec![];
+        open_file
+            .read_to_end(&mut data)
+            .map_err(InternalServerError)?;
+
+        Ok(Attachment::new(data).filename(file_name))
     }
 
     #[oai(path = "/file/metadata", method = "get")]
@@ -418,13 +420,33 @@ impl Api {
         );
         let full_file_path = Api::get_file_path(configuration, &file_path, &location)?;
 
-        log::info!("full path: {:?}", full_file_path);
-
         Ok(Json(Api::_get_print_metadata(
             full_file_path,
             &location,
             configuration,
         )?))
+    }
+
+    #[oai(path = "/file/thumbnail", method = "get")]
+    async fn get_thumbnail(
+        &self,
+        Query(file_path): Query<String>,
+        Query(location): Query<Option<LocationCategory>>,
+        Data(configuration): Data<&ApiConfig>,
+    ) -> Result<Attachment<Vec<u8>>> {
+        let location = location.unwrap_or(LocationCategory::Local);
+
+        log::info!("Getting thumbnail from {:?} in {:?}", file_path, location);
+        let full_file_path = Api::get_file_path(configuration, &file_path, &location)?;
+
+        let file_metadata = Api::_get_filedata(full_file_path, &location, configuration)?;
+        log::info!("Extracting print thumbnail");
+
+        let file_data = Sl1::from_file(file_metadata)
+            .get_thumbnail()
+            .map_err(InternalServerError)?;
+
+        Ok(Attachment::new(file_data.data).filename(file_data.name))
     }
 
     #[oai(path = "/file", method = "post")]
@@ -433,7 +455,7 @@ impl Api {
         Query(_file_path): Query<String>,
         Query(_location): Query<Option<String>>,
         Data(_configuration): Data<&ApiConfig>,
-    ) -> Result<Json<FileData>> {
+    ) -> Result<Json<FileMetadata>> {
         Err(NotImplemented(MethodNotAllowedError))
     }
 }

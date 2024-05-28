@@ -473,12 +473,8 @@ impl<T: HardwareControl> Printer<T> {
             match operation {
                 Operation::QueryState => self.send_status().await,
                 Operation::StartPrint { file_data } => self.start_print(file_data).await,
-                Operation::ManualCommand { command } => {
-                    self.wrapped_command(command).await
-                }
-                Operation::ManualHome => {
-                    self.wrapped_home().await
-                }
+                Operation::ManualCommand { command } => self.wrapped_command(command).await,
+                Operation::ManualHome => self.wrapped_home().await,
                 Operation::ManualMove { z } => {
                     self.wrapped_move(z, self.config.default_up_speed).await
                 }
@@ -531,7 +527,7 @@ pub enum Operation {
     ManualMove { z: f32 },
     ManualCure { cure: bool },
     ManualHome,
-    ManualCommand {command: String },
+    ManualCommand { command: String },
     ManualDisplay { file_name: String },
     QueryState,
     Shutdown,

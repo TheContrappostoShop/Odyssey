@@ -193,6 +193,24 @@ impl<T: HardwareControl> Printer<T> {
         }
     }
 
+    // Execute command and update printer state
+    async fn wrapped_command(&mut self, command: String) {
+        if let Ok(physical_state) = self.hardware_controller.manual_command(command).await {
+            self.update_physical_state(physical_state).await;
+        } else {
+            self.shutdown().await;
+        }
+    }
+
+    // Home and update printer state
+    async fn wrapped_home(&mut self) {
+        if let Ok(physical_state) = self.hardware_controller.home().await {
+            self.update_physical_state(physical_state).await;
+        } else {
+            self.shutdown().await;
+        }
+    }
+
     // Move and update printer state
     async fn wrapped_move(&mut self, z: f32, speed: f32) {
         if let Ok(physical_state) = self.hardware_controller.move_z(z, speed).await {
@@ -455,6 +473,12 @@ impl<T: HardwareControl> Printer<T> {
             match operation {
                 Operation::QueryState => self.send_status().await,
                 Operation::StartPrint { file_data } => self.start_print(file_data).await,
+                Operation::ManualCommand { command } => {
+                    self.wrapped_command(command).await
+                }
+                Operation::ManualHome => {
+                    self.wrapped_home().await
+                }
                 Operation::ManualMove { z } => {
                     self.wrapped_move(z, self.config.default_up_speed).await
                 }
@@ -506,6 +530,8 @@ pub enum Operation {
     ResumePrint,
     ManualMove { z: f32 },
     ManualCure { cure: bool },
+    ManualHome,
+    ManualCommand {command: String },
     ManualDisplay { file_name: String },
     QueryState,
     Shutdown,
@@ -516,6 +542,7 @@ pub trait HardwareControl {
     async fn is_ready(&mut self) -> bool;
     async fn initialize(&mut self);
     async fn home(&mut self) -> std::io::Result<PhysicalState>;
+    async fn manual_command(&mut self, command: String) -> std::io::Result<PhysicalState>;
     async fn start_print(&mut self) -> std::io::Result<PhysicalState>;
     async fn end_print(&mut self) -> std::io::Result<PhysicalState>;
     async fn move_z(&mut self, z: f32, speed: f32) -> std::io::Result<PhysicalState>;

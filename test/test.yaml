@@ -4,7 +4,7 @@
 # This section holds the config fields related to the printer, such as its serial
 # connection and its frame buffer specs
 printer:
-  serial: /dev/pts/6 # Mock port opened with `python3 test/mockSerial.py`
+  serial: /dev/pts/17 # Mock port opened with `python3 test/mockSerial.py`
   baudrate: 250000
   frame_buffer: /dev/null # Dump frames to null for testing
   fb_bit_depth: 5
@@ -24,7 +24,7 @@ gcode:
   shutdown: |
     M84
     UVLED_OFF
-  home_command: G28
+  home_command: HOME_AXIS
   move_command: MOVE_PLATE Z={z} F={speed}
   print_start: |
     HOME_AXIS

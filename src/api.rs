@@ -154,6 +154,35 @@ impl Api {
         Ok(())
     }
 
+    #[oai(path = "/manual/home", method = "post")]
+    async fn manual_home(
+        &self,
+        Data(operation_sender): Data<&mpsc::Sender<Operation>>,
+        Data(_state_ref): Data<&Arc<RwLock<PrinterState>>>,
+    ) -> Result<()> {
+        operation_sender
+            .send(Operation::ManualHome)
+            .await
+            .map_err(ServiceUnavailable)?;
+
+        Ok(())
+    }
+
+    #[oai(path = "/manual/hardware_command", method = "post")]
+    async fn manual_command(
+        &self,
+        Query(command): Query<String>,
+        Data(operation_sender): Data<&mpsc::Sender<Operation>>,
+        Data(_state_ref): Data<&Arc<RwLock<PrinterState>>>,
+    ) -> Result<()> {
+        operation_sender
+            .send(Operation::ManualCommand { command })
+            .await
+            .map_err(ServiceUnavailable)?;
+
+        Ok(())
+    }
+
     #[oai(path = "/files", method = "post")]
     async fn upload_file(
         &self,

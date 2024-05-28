@@ -211,6 +211,12 @@ impl HardwareControl for Gcode {
         Ok(self.state)
     }
 
+    async fn manual_command(&mut self, command: String) -> std::io::Result<PhysicalState> {
+        self.send_gcode(command).await?;
+
+        Ok(self.state)
+    }
+
     async fn move_z(&mut self, z: f32, speed: f32) -> std::io::Result<PhysicalState> {
         // To handle floating point precision issues, truncate to micron precision
         let z = (z * 1000.0).trunc() / 1000.0;

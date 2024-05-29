@@ -130,10 +130,7 @@ impl Api {
     }
 
     #[oai(path = "/config", method = "get")]
-    async fn get_config(
-        &self,
-        Data(full_config): Data<&Configuration>,
-    ) -> Json<Configuration> {
+    async fn get_config(&self, Data(full_config): Data<&Configuration>) -> Json<Configuration> {
         Json(full_config.clone())
     }
 

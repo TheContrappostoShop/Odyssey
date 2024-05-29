@@ -1,6 +1,6 @@
 use config::{Config, ConfigError, File};
-use serde::{Deserialize, Serialize};
 use poem_openapi::Object;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct PrinterConfig {

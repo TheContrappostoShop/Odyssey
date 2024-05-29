@@ -35,7 +35,7 @@ use crate::{
     api_objects::{
         FileMetadata, LocationCategory, PhysicalState, PrintMetadata, PrinterState, PrinterStatus,
     },
-    configuration::ApiConfig,
+    configuration::{ApiConfig, Configuration},
     printer::Operation,
     printfile::PrintFile,
     sl1::Sl1,
@@ -127,6 +127,14 @@ impl Api {
         Data(state_ref): Data<&Arc<RwLock<PrinterState>>>,
     ) -> Json<PrinterState> {
         Json(state_ref.read().await.clone())
+    }
+
+    #[oai(path = "/config", method = "get")]
+    async fn get_config(
+        &self,
+        Data(full_config): Data<&Configuration>,
+    ) -> Json<Configuration> {
+        Json(full_config.clone())
     }
 
     #[oai(path = "/manual", method = "post")]
@@ -509,7 +517,7 @@ async fn run_state_listener(
 }
 
 pub async fn start_api(
-    configuration: ApiConfig,
+    full_config: Configuration,
     operation_sender: mpsc::Sender<Operation>,
     state_receiver: broadcast::Receiver<PrinterState>,
 ) {
@@ -523,6 +531,8 @@ pub async fn start_api(
         },
         status: PrinterStatus::Shutdown,
     }));
+
+    let configuration = full_config.api.clone();
 
     tokio::spawn(run_state_listener(state_receiver, state_ref.clone()));
 
@@ -542,6 +552,7 @@ pub async fn start_api(
     let app = app
         .data(operation_sender)
         .data(state_ref.clone())
+        .data(full_config.clone())
         .data(configuration.clone());
 
     Server::new(TcpListener::bind(addr))

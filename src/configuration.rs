@@ -1,7 +1,8 @@
 use config::{Config, ConfigError, File};
 use serde::{Deserialize, Serialize};
+use poem_openapi::Object;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct PrinterConfig {
     pub serial: String,
     pub baudrate: u32,
@@ -16,7 +17,7 @@ pub struct PrinterConfig {
     pub default_wait_after_exposure: f32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct GcodeConfig {
     pub boot: String,
     pub shutdown: String,
@@ -33,14 +34,14 @@ pub struct GcodeConfig {
     pub status_desired: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct ApiConfig {
     pub upload_path: String,
     pub usb_glob: String,
     pub port: u16,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct Configuration {
     pub printer: PrinterConfig,
     pub gcode: GcodeConfig,

@@ -57,7 +57,7 @@ fn main() {
 
         tokio::spawn(async move { printer.start_statemachine().await });
 
-        api::start_api(configuration.api, sender, receiver).await;
+        api::start_api(configuration, sender, receiver).await;
     });
 }
 

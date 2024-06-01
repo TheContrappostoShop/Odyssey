@@ -24,7 +24,7 @@ gcode:
   shutdown: |
     M84
     UVLED_OFF
-  home_command: G28
+  home_command: HOME_AXIS
   move_command: MOVE_PLATE Z={z} F={speed}
   print_start: |
     HOME_AXIS

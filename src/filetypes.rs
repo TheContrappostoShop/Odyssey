@@ -5,9 +5,9 @@ use sl1::*;
 
 use crate::api_objects::FileMetadata;
 
+pub mod goo;
 pub mod printfile;
 pub mod sl1;
-pub mod goo;
 
 pub enum SupportedFileTypes {
     SL1,

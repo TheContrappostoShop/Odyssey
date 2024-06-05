@@ -14,9 +14,9 @@ mod api;
 mod api_objects;
 mod configuration;
 mod display;
+mod filetypes;
 mod gcode;
 mod printer;
-mod filetypes;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

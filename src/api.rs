@@ -36,9 +36,9 @@ use crate::{
         FileMetadata, LocationCategory, PhysicalState, PrintMetadata, PrinterState, PrinterStatus,
     },
     configuration::{ApiConfig, Configuration},
-    printer::Operation,
     filetypes::printfile::PrintFile,
     filetypes::sl1::Sl1,
+    printer::Operation,
 };
 
 #[derive(Debug, Multipart)]

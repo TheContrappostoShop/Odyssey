@@ -16,8 +16,7 @@ mod configuration;
 mod display;
 mod gcode;
 mod printer;
-mod printfile;
-mod sl1;
+mod filetypes;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

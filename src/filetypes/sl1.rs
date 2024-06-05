@@ -12,7 +12,7 @@ use zip::ZipArchive;
 
 use crate::{
     api_objects::{FileData, FileMetadata, PrintMetadata},
-    printfile::{Layer, PrintFile},
+    filetypes::printfile::{Layer, PrintFile},
 };
 
 const CONFIG_FILE: &str = "config.ini";
@@ -22,7 +22,7 @@ const THUMBNAIL_FILE: &str = "thumbnail/thumbnail400x400.png";
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
-pub struct PrintConfig {
+struct PrintConfig {
     action: String,
     exp_time: f32,
     exp_time_first: f32,

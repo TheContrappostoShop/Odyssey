@@ -37,8 +37,8 @@ use crate::{
     },
     configuration::{ApiConfig, Configuration},
     printer::Operation,
-    printfile::PrintFile,
-    sl1::Sl1,
+    filetypes::printfile::PrintFile,
+    filetypes::sl1::Sl1,
 };
 
 #[derive(Debug, Multipart)]

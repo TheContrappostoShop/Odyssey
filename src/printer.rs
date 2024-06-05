@@ -9,9 +9,9 @@ use crate::api_objects::PrinterState;
 use crate::api_objects::PrinterStatus;
 use crate::configuration::*;
 use crate::display::*;
-use crate::printfile::Layer;
-use crate::printfile::PrintFile;
-use crate::sl1::*;
+use crate::filetypes::printfile::Layer;
+use crate::filetypes::printfile::PrintFile;
+use crate::filetypes::sl1::*;
 use tokio::time::{interval, sleep, Duration};
 
 pub struct Printer<T: HardwareControl> {

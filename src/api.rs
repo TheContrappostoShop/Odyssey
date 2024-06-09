@@ -447,7 +447,8 @@ impl Api {
     ) -> Result<Json<PrintMetadata>> {
         let location = location.unwrap_or(LocationCategory::Local);
 
-        log::info!("Getting file metadata from {:?} in {:?}",
+        log::info!(
+            "Getting file metadata from {:?} in {:?}",
             file_path,
             location
         );

@@ -1,4 +1,4 @@
-name: Pre-Push Format Check
+name: pre-merge-commit Format Check
 
 
 on:
@@ -7,7 +7,7 @@ on:
     workflow_dispatch:
 
 jobs:
-    pre-push:
+    pre-merge-commit:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4

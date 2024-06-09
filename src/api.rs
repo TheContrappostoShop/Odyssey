@@ -144,7 +144,9 @@ impl Api {
     ) -> Result<()> {
         if let Query(Some(z)) = z {
             operation_sender
-                .send(Operation::ManualMove { z: (z * 1000.0).trunc() as u32 })
+                .send(Operation::ManualMove {
+                    z: (z * 1000.0).trunc() as u32,
+                })
                 .await
                 .map_err(ServiceUnavailable)?;
         }

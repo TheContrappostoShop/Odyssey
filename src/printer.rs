@@ -55,7 +55,9 @@ impl<T: HardwareControl> Printer<T> {
         let layer_height = file.get_layer_height();
 
         // Get movement values from file, or configured defaults
-        let lift = file.get_lift().unwrap_or((self.config.default_lift * 1000.0).trunc() as u32);
+        let lift = file
+            .get_lift()
+            .unwrap_or((self.config.default_lift * 1000.0).trunc() as u32);
         let up_speed = file.get_up_speed().unwrap_or(self.config.default_up_speed);
         let down_speed = file
             .get_down_speed()

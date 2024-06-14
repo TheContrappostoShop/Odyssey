@@ -53,3 +53,8 @@ pub enum PrinterStatus {
     Idle,
     Shutdown,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Enum)]
+pub enum DisplayTest {
+    White,
+}

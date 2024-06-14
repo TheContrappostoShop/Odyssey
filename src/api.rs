@@ -33,7 +33,8 @@ use tokio::{
 
 use crate::{
     api_objects::{
-        FileMetadata, LocationCategory, PhysicalState, PrintMetadata, PrinterState, PrinterStatus,
+        DisplayTest, FileMetadata, LocationCategory, PhysicalState, PrintMetadata, PrinterState,
+        PrinterStatus,
     },
     configuration::{ApiConfig, Configuration},
     printer::Operation,
@@ -185,6 +186,20 @@ impl Api {
             .await
             .map_err(ServiceUnavailable)?;
 
+        Ok(())
+    }
+
+    #[oai(path = "/manual/display_test", method = "post")]
+    async fn manual_display_test(
+        &self,
+        Query(test): Query<DisplayTest>,
+        Data(operation_sender): Data<&mpsc::Sender<Operation>>,
+        Data(_state_ref): Data<&Arc<RwLock<PrinterState>>>,
+    ) -> Result<()> {
+        operation_sender
+            .send(Operation::ManualDisplayTest { test })
+            .await
+            .map_err(ServiceUnavailable)?;
         Ok(())
     }
 

@@ -57,4 +57,7 @@ pub enum PrinterStatus {
 #[derive(Clone, Debug, Serialize, Deserialize, Enum)]
 pub enum DisplayTest {
     White,
+    Blank,
+    Grid,
+    Dimensions,
 }

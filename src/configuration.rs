@@ -15,6 +15,7 @@ pub struct PrinterConfig {
     pub default_down_speed: f64,
     pub default_wait_before_exposure: f64,
     pub default_wait_after_exposure: f64,
+    pub pause_lift: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Object)]

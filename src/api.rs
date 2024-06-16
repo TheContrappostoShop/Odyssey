@@ -137,14 +137,16 @@ impl Api {
     #[oai(path = "/manual", method = "post")]
     async fn manual_control(
         &self,
-        z: Query<Option<f32>>,
+        z: Query<Option<f64>>,
         cure: Query<Option<bool>>,
         Data(operation_sender): Data<&mpsc::Sender<Operation>>,
         Data(_state_ref): Data<&Arc<RwLock<PrinterState>>>,
     ) -> Result<()> {
         if let Query(Some(z)) = z {
             operation_sender
-                .send(Operation::ManualMove { z })
+                .send(Operation::ManualMove {
+                    z: (z * 1000.0).trunc() as u32,
+                })
                 .await
                 .map_err(ServiceUnavailable)?;
         }
@@ -524,6 +526,7 @@ pub async fn start_api(
         layer: None,
         physical_state: PhysicalState {
             z: 0.0,
+            z_microns: 0,
             curing: false,
         },
         status: PrinterStatus::Shutdown,

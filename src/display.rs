@@ -5,12 +5,12 @@ use png::Decoder;
 pub struct Frame {
     pub file_name: String,
     pub buffer: Vec<u8>,
-    pub exposure_time: f32,
+    pub exposure_time: f64,
     pub bit_depth: u8,
 }
 
 impl Frame {
-    pub fn from_vec(name: String, exposure_time: f32, data: Vec<u8>) -> Frame {
+    pub fn from_vec(name: String, exposure_time: f64, data: Vec<u8>) -> Frame {
         let decoder = Decoder::new(data.as_slice());
 
         let mut png_reader = decoder.read_info().expect("Unable to read PNG metadata");

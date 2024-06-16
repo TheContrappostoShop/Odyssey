@@ -36,6 +36,7 @@ impl Gcode {
             config: config.gcode,
             state: PhysicalState {
                 z: 0.0,
+                z_microns: 0,
                 curing: false,
             },
             gcode_substitutions: HashMap::new(),
@@ -164,8 +165,9 @@ impl Gcode {
     /// Set the internally-stored position. Any method which uses a send_gcode
     /// method to cause the z axis to move, should call this method to reflect
     /// that change
-    fn set_position(&mut self, position: f32) -> PhysicalState {
-        self.state.z = position;
+    fn set_position(&mut self, position: u32) -> PhysicalState {
+        self.state.z_microns = position;
+        self.state.z = (position as f64) / 1000.0;
         self.state
     }
 
@@ -217,10 +219,7 @@ impl HardwareControl for Gcode {
         Ok(self.state)
     }
 
-    async fn move_z(&mut self, z: f32, speed: f32) -> std::io::Result<PhysicalState> {
-        // To handle floating point precision issues, truncate to micron precision
-        let z = (z * 1000.0).trunc() / 1000.0;
-
+    async fn move_z(&mut self, z: u32, speed: f64) -> std::io::Result<PhysicalState> {
         // Convert from mm/s to mm/min f value
         let speed = speed * 60.0;
 

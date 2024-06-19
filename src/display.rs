@@ -1,6 +1,8 @@
 use framebuffer::Framebuffer;
 use png::Decoder;
 
+use crate::api_objects::DisplayTest;
+
 #[derive(Clone)]
 pub struct Frame {
     pub file_name: String,
@@ -79,6 +81,38 @@ impl PrintDisplay {
                 .as_mut()
                 .unwrap()
                 .write_frame(&frame.buffer);
+        }
+    }
+
+    pub fn display_test(&mut self, test: DisplayTest) {
+        match test {
+            DisplayTest::White => self.display_test_white(),
+            DisplayTest::Blank => self.display_test_blank(),
+            _ => (),
+        }
+    }
+
+    fn display_test_white(&mut self) {
+        if let Some(fb) = self.frame_buffer.as_mut() {
+            let test_bytes = vec![
+                0xFF;
+                (fb.fix_screen_info.line_length * fb.var_screen_info.yres_virtual)
+                    as usize
+            ];
+
+            fb.write_frame(&test_bytes);
+        }
+    }
+
+    fn display_test_blank(&mut self) {
+        if let Some(fb) = self.frame_buffer.as_mut() {
+            let test_bytes = vec![
+                0x00;
+                (fb.fix_screen_info.line_length * fb.var_screen_info.yres_virtual)
+                    as usize
+            ];
+
+            fb.write_frame(&test_bytes);
         }
     }
 

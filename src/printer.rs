@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 
+use crate::api_objects::DisplayTest;
 use crate::api_objects::FileMetadata;
 use crate::api_objects::PhysicalState;
 use crate::api_objects::PrintMetadata;
@@ -489,6 +490,9 @@ impl<T: HardwareControl> Printer<T> {
                         self.wrapped_stop_cure().await;
                     }
                 }
+                Operation::ManualDisplayTest { test } => {
+                    self.display.display_test(test);
+                }
                 Operation::Shutdown => self.shutdown().await,
                 _ => (),
             };
@@ -533,6 +537,7 @@ pub enum Operation {
     ManualHome,
     ManualCommand { command: String },
     ManualDisplay { file_name: String },
+    ManualDisplayTest { test: DisplayTest },
     QueryState,
     Shutdown,
 }

@@ -95,7 +95,7 @@ impl PrintDisplay {
     fn display_test_white(&mut self) {
         if let Some(fb) = self.frame_buffer.as_mut() {
             let test_bytes = vec![
-                0xFF as u8;
+                0xFF;
                 (fb.fix_screen_info.line_length * fb.var_screen_info.yres_virtual)
                     as usize
             ];
@@ -107,7 +107,7 @@ impl PrintDisplay {
     fn display_test_blank(&mut self) {
         if let Some(fb) = self.frame_buffer.as_mut() {
             let test_bytes = vec![
-                0x00 as u8;
+                0x00;
                 (fb.fix_screen_info.line_length * fb.var_screen_info.yres_virtual)
                     as usize
             ];

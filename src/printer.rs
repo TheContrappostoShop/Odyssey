@@ -242,6 +242,13 @@ impl<T: HardwareControl> Printer<T> {
         }
     }
 
+    // Move only if paused
+    async fn paused_move(&mut self, z: u32, speed: f64) {
+        if self.state.paused.unwrap_or(false) {
+            self.wrapped_move(z.max(self._get_layer_z()), speed).await;
+        }
+    }
+
     // Update layer in printer state
     async fn set_layer(&mut self, layer: usize) {
         self.update_layer(layer).await;
@@ -269,6 +276,14 @@ impl<T: HardwareControl> Printer<T> {
 
     async fn pause_print(&mut self) {
         self.update_paused(true).await;
+        self.wrapped_move(
+            ((self.config.max_z * 1000.0).trunc() as u32).min(
+                self.state.physical_state.z_microns
+                    + ((self.config.pause_lift * 1000.0).trunc() as u32),
+            ),
+            self.config.default_up_speed,
+        )
+        .await;
     }
 
     async fn resume_print(&mut self) {
@@ -277,6 +292,16 @@ impl<T: HardwareControl> Printer<T> {
 
     fn _get_layer(&self) -> usize {
         self.state.layer.unwrap_or(0)
+    }
+
+    fn _get_layer_z(&self) -> u32 {
+        ((self._get_layer() + 1) as u32)
+            * self
+                .state
+                .print_data
+                .clone()
+                .map(|print| print.layer_height_microns)
+                .unwrap_or(0)
     }
 
     fn get_file_data(&self) -> Option<FileMetadata> {
@@ -349,6 +374,9 @@ impl<T: HardwareControl> Printer<T> {
                 Operation::StopPrint => self.set_idle().await,
                 Operation::QueryState => self.send_status().await,
                 Operation::Shutdown => self.shutdown().await,
+                Operation::ManualMove { z } => {
+                    self.paused_move(z, self.config.default_up_speed).await
+                }
                 _ => (),
             };
             op_result = self.operation_channel.1.try_recv();

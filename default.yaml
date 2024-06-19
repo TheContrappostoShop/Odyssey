@@ -15,6 +15,7 @@ printer:
   default_down_speed: 3.4
   default_wait_before_exposure: 2.2
   default_wait_after_exposure: 1.5
+  pause_lift: 100
 
 # This section holds fields pertaining to the Gcode used to drive the machine's
 # hardware, and signal between the board and Odyssey

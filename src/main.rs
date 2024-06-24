@@ -97,8 +97,7 @@ fn build_printer(configuration: Configuration) -> Printer<Gcode> {
 
     let display: PrintDisplay = PrintDisplay::new(
         configuration.printer.frame_buffer.clone(),
-        configuration.printer.fb_bit_depth,
-        configuration.printer.fb_chunk_size,
+        configuration.printer.fb_bit_depth.clone(),
     );
 
     Printer::new(configuration.printer, display, gcode)

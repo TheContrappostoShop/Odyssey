@@ -35,16 +35,13 @@ impl Frame {
 pub struct PrintDisplay {
     pub frame_buffer: Option<Framebuffer>,
     pub fb_path: String,
-    pub bit_depth: u8,
-    pub chunk_size: u8,
+    pub bit_depth: Vec<u8>,
 }
 
 impl PrintDisplay {
     fn re_encode(&self, mut frame: Frame) -> Frame {
-        let pixels_per_chunk = self.chunk_size / self.bit_depth;
-        let chunk_remainder = self.chunk_size % self.bit_depth;
-
-        let depth_difference = frame.bit_depth - self.bit_depth;
+        let chunk_size: u8 = self.bit_depth.iter().sum();
+        let pixels_per_chunk = self.bit_depth.len();
 
         let mut new_buffer: Vec<u8> = Vec::new();
 
@@ -53,15 +50,19 @@ impl PrintDisplay {
             .chunks_exact(pixels_per_chunk.into())
             .for_each(|pixel_chunk| {
                 // raw binary chunk of pixels, to be broken into bytes and repacked in the Vector later
-                let mut raw_chunk = 0b00000000000000000000000000000000;
+                let mut raw_chunk = 0b0;
+                let mut pos_shift = 0;
                 for i in 0..pixels_per_chunk {
+                    let depth_difference = frame.bit_depth - self.bit_depth[i];
+                    pos_shift += self.bit_depth[i];
+
                     // Truncate the pixel data to the display's bit depth, then shift it into place in the raw chunk
                     let shifted_pixel: u64 = ((pixel_chunk[i as usize] as u64) >> depth_difference)
-                        << (i * self.bit_depth + chunk_remainder);
+                        << (pos_shift );
                     raw_chunk |= shifted_pixel;
                 }
 
-                for i in 0..(self.chunk_size / 8) {
+                for i in 0..(chunk_size / 8) {
                     // pull the raw chunk back apart into bytes, for push into the new buffer
                     let byte = ((raw_chunk >> (8 * i)) & 0xFF) as u8;
                     new_buffer.push(byte);
@@ -73,7 +74,7 @@ impl PrintDisplay {
     }
 
     pub fn display_frame(&mut self, mut frame: Frame) {
-        if frame.bit_depth != self.bit_depth {
+        if !(self.bit_depth.len()==1 && self.bit_depth[0] == frame.bit_depth) {
             frame = self.re_encode(frame);
         }
         if self.frame_buffer.is_some() {
@@ -116,18 +117,17 @@ impl PrintDisplay {
         }
     }
 
-    pub fn new(fb_path: String, bit_depth: u8, chunk_size: u8) -> PrintDisplay {
+    pub fn new(fb_path: String, bit_depth: Vec<u8>) -> PrintDisplay {
         PrintDisplay {
             frame_buffer: Framebuffer::new(fb_path.clone()).ok(),
             fb_path,
             bit_depth,
-            chunk_size,
         }
     }
 }
 
 impl Clone for PrintDisplay {
     fn clone(&self) -> Self {
-        Self::new(self.fb_path.clone(), self.bit_depth, self.chunk_size)
+        Self::new(self.fb_path.clone(), self.bit_depth.clone())
     }
 }

@@ -7,8 +7,10 @@ printer:
   serial: /home/pi/printer_data/comms/klippy.serial
   baudrate: 250000
   frame_buffer: /dev/fb0
-  fb_bit_depth: 5
-  fb_chunk_size: 16
+  fb_bit_depth:
+  - 5
+  - 6
+  - 5
   max_z: 350
   default_lift: 10
   default_up_speed: 3.4

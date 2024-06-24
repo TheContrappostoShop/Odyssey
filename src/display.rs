@@ -57,8 +57,8 @@ impl PrintDisplay {
                     pos_shift += self.bit_depth[i];
 
                     // Truncate the pixel data to the display's bit depth, then shift it into place in the raw chunk
-                    let shifted_pixel: u64 = ((pixel_chunk[i as usize] as u64) >> depth_difference)
-                        << (pos_shift );
+                    let shifted_pixel: u64 =
+                        ((pixel_chunk[i as usize] as u64) >> depth_difference) << (pos_shift);
                     raw_chunk |= shifted_pixel;
                 }
 
@@ -74,7 +74,7 @@ impl PrintDisplay {
     }
 
     pub fn display_frame(&mut self, mut frame: Frame) {
-        if !(self.bit_depth.len()==1 && self.bit_depth[0] == frame.bit_depth) {
+        if !(self.bit_depth.len() == 1 && self.bit_depth[0] == frame.bit_depth) {
             frame = self.re_encode(frame);
         }
         if self.frame_buffer.is_some() {

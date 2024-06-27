@@ -15,7 +15,6 @@ pub struct PrinterConfig {
     pub pause_lift: f64,
 }
 
-
 #[derive(Clone, Debug, Serialize, Deserialize, Object)]
 pub struct DisplayConfig {
     pub frame_buffer: String,

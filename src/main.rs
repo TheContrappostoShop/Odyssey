@@ -96,9 +96,7 @@ fn build_printer(configuration: Configuration) -> Printer<Gcode> {
         configuration.printer.default_lift.to_string(),
     );
 
-    let display: PrintDisplay = PrintDisplay::new(
-        configuration.display.clone()
-    );
+    let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
 
     Printer::new(configuration.printer, display, gcode)
 }

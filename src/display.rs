@@ -1,7 +1,9 @@
 use framebuffer::Framebuffer;
 use png::Decoder;
 
-use crate::{api_objects::DisplayTest, configuration::DisplayConfig, wrapped_framebuffer::WrappedFramebuffer};
+use crate::{
+    api_objects::DisplayTest, configuration::DisplayConfig, wrapped_framebuffer::WrappedFramebuffer,
+};
 
 #[derive(Clone)]
 pub struct Frame {
@@ -34,7 +36,7 @@ impl Frame {
 
 pub struct PrintDisplay {
     pub frame_buffer: WrappedFramebuffer,
-    pub config: DisplayConfig
+    pub config: DisplayConfig,
 }
 
 impl PrintDisplay {
@@ -78,7 +80,6 @@ impl PrintDisplay {
             frame = self.re_encode(frame);
         }
         self.frame_buffer.write_frame(&frame.buffer);
-    
     }
 
     pub fn display_test(&mut self, test: DisplayTest) {
@@ -90,31 +91,25 @@ impl PrintDisplay {
     }
 
     fn display_test_white(&mut self) {
-        let test_bytes = vec![
-            0xFF;
-            (self.config.screen_width * self.config.screen_height)
-                as usize
-        ];
+        let test_bytes =
+            vec![0xFF; (self.config.screen_width * self.config.screen_height) as usize];
 
         self.frame_buffer.write_frame(&test_bytes);
     }
 
     fn display_test_blank(&mut self) {
-        let test_bytes = vec![
-            0x00;
-            (self.config.screen_width * self.config.screen_height)
-                as usize
-        ];
+        let test_bytes =
+            vec![0x00; (self.config.screen_width * self.config.screen_height) as usize];
         self.frame_buffer.write_frame(&test_bytes);
     }
 
     pub fn new(config: DisplayConfig) -> PrintDisplay {
         PrintDisplay {
             frame_buffer: WrappedFramebuffer {
-                frame_buffer: Framebuffer::new(config.frame_buffer.clone()).ok(), 
-                fb_path: config.frame_buffer.clone()
+                frame_buffer: Framebuffer::new(config.frame_buffer.clone()).ok(),
+                fb_path: config.frame_buffer.clone(),
             },
-            config
+            config,
         }
     }
 }

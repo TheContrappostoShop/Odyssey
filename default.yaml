@@ -6,11 +6,6 @@
 printer:
   serial: /home/pi/printer_data/comms/klippy.serial
   baudrate: 250000
-  frame_buffer: /dev/fb0
-  fb_bit_depth:
-  - 5
-  - 6
-  - 5
   max_z: 350
   default_lift: 10
   default_up_speed: 3.4
@@ -18,6 +13,16 @@ printer:
   default_wait_before_exposure: 2.2
   default_wait_after_exposure: 1.5
   pause_lift: 100
+
+# This section holds fields pertaining to the display used by the printer
+display:
+  frame_buffer: /tmp/emulatedFramebuffer # Dump frames to null for testing
+  bit_depth:
+    - 5
+    - 6
+    - 5
+  screen_width: 2160
+  screen_height: 3600
 
 # This section holds fields pertaining to the Gcode used to drive the machine's
 # hardware, and signal between the board and Odyssey

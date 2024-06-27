@@ -18,6 +18,7 @@ mod gcode;
 mod printer;
 mod printfile;
 mod sl1;
+mod wrapped_framebuffer;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -96,8 +97,7 @@ fn build_printer(configuration: Configuration) -> Printer<Gcode> {
     );
 
     let display: PrintDisplay = PrintDisplay::new(
-        configuration.printer.frame_buffer.clone(),
-        configuration.printer.fb_bit_depth.clone(),
+        configuration.display.clone()
     );
 
     Printer::new(configuration.printer, display, gcode)

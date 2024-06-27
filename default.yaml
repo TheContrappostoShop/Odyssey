@@ -16,7 +16,7 @@ printer:
 
 # This section holds fields pertaining to the display used by the printer
 display:
-  frame_buffer: /tmp/emulatedFramebuffer # Dump frames to null for testing
+  frame_buffer: /dev/fb0
   bit_depth:
     - 5
     - 6

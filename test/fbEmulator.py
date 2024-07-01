@@ -19,9 +19,12 @@ bytes_per_pixelgroup=int(sum(real_bit_depth)/8)
 fake_bit_depth=8
 
 
-sliced_x, sliced_y = (192,108)
+#sliced_x, sliced_y = (6480,3600)
+#zoom_ratio=1
 
+sliced_x, sliced_y = (192,108)
 zoom_ratio=10
+
 
 print(f"Rendering a screen {sliced_x*zoom_ratio}x{sliced_y*zoom_ratio}")
 print(f"Models should be sliced for {sliced_x}x{sliced_y}, and a {zoom_ratio}x zoom will be applied")
@@ -52,9 +55,8 @@ with open(fifo_path, mode='rb', buffering=frame_size) as efb:
                 grouped_data = [data[i:(i+bytes_per_pixelgroup)] for i in range(0, len(data), bytes_per_pixelgroup)]
 
                 for group in grouped_data:
-                    combined = int.from_bytes(group, byteorder="big")
-                    if (combined>0):
-                        print(f"{combined:>016b}")
+                    combined = int.from_bytes(group, byteorder="little")
+                    #if (combined>0): print(f"{combined:>016b}")
 
                     pos_shift = sum(real_bit_depth)
 

@@ -314,7 +314,7 @@ impl<T: HardwareControl> Printer<T> {
     async fn display_file_layer(&mut self, file_data: FileMetadata, layer: usize) {
         let mut file: Box<dyn PrintFile + Send> = Box::new(Sl1::from_file(file_data.clone()));
 
-        let optional_frame = Frame::from_layer(file.get_layer_data(0).await).await;
+        let optional_frame = Frame::from_layer(file.get_layer_data(layer).await).await;
 
         if let Some(frame) = optional_frame {
             log::info!("Loading layer {} from {} to display", layer, file_data.name);

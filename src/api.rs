@@ -196,13 +196,33 @@ impl Api {
         &self,
         Query(test): Query<DisplayTest>,
         Data(operation_sender): Data<&mpsc::Sender<Operation>>,
-        Data(_state_ref): Data<&Arc<RwLock<PrinterState>>>,
     ) -> Result<()> {
         operation_sender
             .send(Operation::ManualDisplayTest { test })
             .await
             .map_err(ServiceUnavailable)?;
         Ok(())
+    }
+
+    #[oai(path = "/manual/display_layer", method = "post")]
+    async fn manual_display_layer(
+        &self,
+        Query(file_path): Query<String>,
+        Query(location): Query<Option<LocationCategory>>,
+        Query(layer): Query<usize>,
+        Data(operation_sender): Data<&mpsc::Sender<Operation>>,
+        Data(configuration): Data<&ApiConfig>,
+    ) -> Result<()> {
+        let location = location.unwrap_or(LocationCategory::Local);
+
+        let full_file_path = Api::get_file_path(configuration, &file_path, &location)?;
+
+        let file_data = Api::_get_filedata(full_file_path, &location, configuration)?;
+
+        operation_sender
+            .send(Operation::ManualDisplayLayer { file_data, layer })
+            .await
+            .map_err(ServiceUnavailable)
     }
 
     #[oai(path = "/files", method = "post")]

@@ -64,7 +64,7 @@ impl PrintDisplay {
                     raw_chunk |= shifted_pixel;
                 }
 
-                for i in (0..(chunk_size / 8)).rev() {
+                for i in 0..(chunk_size / 8) {
                     // pull the raw chunk back apart into bytes, for push into the new buffer
                     let byte = ((raw_chunk >> (8 * i)) & 0xFF) as u8;
                     new_buffer.push(byte);

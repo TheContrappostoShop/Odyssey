@@ -311,6 +311,17 @@ impl<T: HardwareControl> Printer<T> {
             .map(|print_data| print_data.file_data)
     }
 
+    async fn display_file_layer(&mut self, file_data: FileMetadata, layer: usize) {
+        let mut file: Box<dyn PrintFile + Send> = Box::new(Sl1::from_file(file_data.clone()));
+
+        let optional_frame = Frame::from_layer(file.get_layer_data(layer).await).await;
+
+        if let Some(frame) = optional_frame {
+            log::info!("Loading layer {} from {} to display", layer, file_data.name);
+            self.display.display_frame(frame);
+        }
+    }
+
     async fn enter_printing_state(&mut self, print_data: PrintMetadata) {
         log::info!("Entering printing state");
         match self.state.status {
@@ -521,6 +532,9 @@ impl<T: HardwareControl> Printer<T> {
                 Operation::ManualDisplayTest { test } => {
                     self.display.display_test(test);
                 }
+                Operation::ManualDisplayLayer { file_data, layer } => {
+                    self.display_file_layer(file_data, layer).await;
+                }
                 Operation::Shutdown => self.shutdown().await,
                 _ => (),
             };
@@ -556,16 +570,29 @@ impl Frame {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Operation {
-    StartPrint { file_data: FileMetadata },
+    StartPrint {
+        file_data: FileMetadata,
+    },
     StopPrint,
     PausePrint,
     ResumePrint,
-    ManualMove { z: u32 },
-    ManualCure { cure: bool },
+    ManualMove {
+        z: u32,
+    },
+    ManualCure {
+        cure: bool,
+    },
     ManualHome,
-    ManualCommand { command: String },
-    ManualDisplay { file_name: String },
-    ManualDisplayTest { test: DisplayTest },
+    ManualCommand {
+        command: String,
+    },
+    ManualDisplayLayer {
+        file_data: FileMetadata,
+        layer: usize,
+    },
+    ManualDisplayTest {
+        test: DisplayTest,
+    },
     QueryState,
     Shutdown,
 }

@@ -42,7 +42,7 @@ pub struct PrintDisplay {
 impl PrintDisplay {
     fn re_encode(&self, buffer: Vec<u8>, bit_depth: u8) -> Vec<u8> {
         if self.config.bit_depth.len() == 1 && self.config.bit_depth[0] == bit_depth {
-            return buffer
+            return buffer;
         }
 
         let chunk_size: u8 = self.config.bit_depth.iter().sum(); //8
@@ -82,7 +82,8 @@ impl PrintDisplay {
     }
 
     fn display_bytes(&mut self, buffer: Vec<u8>, bit_depth: u8) {
-        self.frame_buffer.write_frame(&self.re_encode(buffer, bit_depth));
+        self.frame_buffer
+            .write_frame(&self.re_encode(buffer, bit_depth));
     }
 
     pub fn display_test(&mut self, test: DisplayTest) {

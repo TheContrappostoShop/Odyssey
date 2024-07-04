@@ -21,7 +21,7 @@ display:
     - 5
     - 6
     - 5
-  screen_width: 2160
+  screen_width: 6480
   screen_height: 3600
 
 # This section holds fields pertaining to the Gcode used to drive the machine's

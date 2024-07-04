@@ -40,22 +40,25 @@ pub struct PrintDisplay {
 }
 
 impl PrintDisplay {
-    fn re_encode(&self, mut frame: Frame) -> Frame {
+    fn re_encode(&self, buffer: Vec<u8>, bit_depth: u8) -> Vec<u8> {
+        if self.config.bit_depth.len() == 1 && self.config.bit_depth[0] == bit_depth {
+            return buffer
+        }
+
         let chunk_size: u8 = self.config.bit_depth.iter().sum(); //8
         let pixels_per_chunk = self.config.bit_depth.len(); //1
-        log::info!("Re-encoding frame with bit-depth {} into {} pixels in {} bits, with the following bit layout: {:?}", frame.bit_depth, pixels_per_chunk, chunk_size, self.config.bit_depth);
+        log::info!("Re-encoding frame with bit-depth {} into {} pixels in {} bits, with the following bit layout: {:?}", bit_depth, pixels_per_chunk, chunk_size, self.config.bit_depth);
 
         let mut new_buffer: Vec<u8> = Vec::new();
 
-        frame
-            .buffer
+        buffer
             .chunks_exact(pixels_per_chunk.into())
             .for_each(|pixel_chunk| {
                 // raw binary chunk of pixels, to be broken into bytes and repacked in the Vector later
                 let mut raw_chunk = 0b0;
                 let mut pos_shift = chunk_size;
                 for i in 0..pixels_per_chunk {
-                    let depth_difference = frame.bit_depth - self.config.bit_depth[i];
+                    let depth_difference = bit_depth - self.config.bit_depth[i];
                     pos_shift -= self.config.bit_depth[i];
 
                     // Truncate the pixel data to the display's bit depth, then shift it into place in the raw chunk
@@ -71,36 +74,33 @@ impl PrintDisplay {
                 }
             });
 
-        frame.buffer = new_buffer;
-        frame
+        new_buffer
     }
 
-    pub fn display_frame(&mut self, mut frame: Frame) {
-        if !(self.config.bit_depth.len() == 1 && self.config.bit_depth[0] == frame.bit_depth) {
-            frame = self.re_encode(frame);
-        }
-        self.frame_buffer.write_frame(&frame.buffer);
+    pub fn display_frame(&mut self, frame: Frame) {
+        self.display_bytes(frame.buffer, frame.bit_depth);
+    }
+
+    fn display_bytes(&mut self, buffer: Vec<u8>, bit_depth: u8) {
+        self.frame_buffer.write_frame(&self.re_encode(buffer, bit_depth));
     }
 
     pub fn display_test(&mut self, test: DisplayTest) {
-        match test {
+        let test_bytes = match test {
             DisplayTest::White => self.display_test_white(),
             DisplayTest::Blank => self.display_test_blank(),
-            _ => (),
-        }
+            _ => self.display_test_blank(),
+        };
+
+        self.display_bytes(test_bytes, 8);
     }
 
-    fn display_test_white(&mut self) {
-        let test_bytes =
-            vec![0xFF; (self.config.screen_width * self.config.screen_height) as usize];
-
-        self.frame_buffer.write_frame(&test_bytes);
+    fn display_test_white(&mut self) -> Vec<u8> {
+        vec![0xFF; (self.config.screen_width * self.config.screen_height) as usize]
     }
 
-    fn display_test_blank(&mut self) {
-        let test_bytes =
-            vec![0x00; (self.config.screen_width * self.config.screen_height) as usize];
-        self.frame_buffer.write_frame(&test_bytes);
+    fn display_test_blank(&mut self) -> Vec<u8> {
+        vec![0x00; (self.config.screen_width * self.config.screen_height) as usize]
     }
 
     pub fn new(config: DisplayConfig) -> PrintDisplay {

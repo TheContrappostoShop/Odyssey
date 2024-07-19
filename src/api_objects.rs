@@ -33,6 +33,12 @@ pub struct PrintMetadata {
     pub layer_count: usize,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Enum)]
+pub enum ThumbnailSize {
+    Large,
+    Small,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Object)]
 pub struct PhysicalState {
     pub z: f64,

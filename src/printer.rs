@@ -28,7 +28,14 @@ pub struct Printer<T: HardwareControl> {
 }
 
 impl<T: HardwareControl> Printer<T> {
-    pub fn new(config: PrinterConfig, display: PrintDisplay, hardware_controller: T) -> Printer<T> {
+    pub fn new(config: PrinterConfig, display: PrintDisplay, mut hardware_controller: T) -> Printer<T> {
+        
+        hardware_controller.add_print_variable("max_z".to_string(), config.max_z.to_string());
+        hardware_controller.add_print_variable(
+            "z_lift".to_string(),
+            config.default_lift.to_string(),
+        );
+
         Printer {
             config,
             display,

@@ -1,23 +1,11 @@
 use std::str::FromStr;
 
 use clap::Parser;
-use configuration::Configuration;
 
-use display::PrintDisplay;
-use printer::HardwareControl;
 use simple_logger::SimpleLogger;
 use tokio::runtime::{Builder, Runtime};
 
-use crate::{gcode::Gcode, printer::Printer};
-
-mod api;
-mod api_objects;
-mod configuration;
-mod display;
-mod gcode;
-mod printer;
-mod printfile;
-mod sl1;
+use odyssey::{self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::{Printer}};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -46,8 +34,21 @@ fn main() {
     log::info!("Starting Odyssey");
 
     let configuration = parse_config(args.config);
+    
+    let serial = serialport::new(
+        configuration.printer.serial.clone(),
+        configuration.printer.baudrate,
+    );
 
-    let mut printer = build_printer(configuration.clone());
+    let gcode = Gcode::new(configuration.clone(), serial);
+
+    let display: PrintDisplay = PrintDisplay::new(
+        configuration.printer.frame_buffer.clone(),
+        configuration.printer.fb_bit_depth,
+        configuration.printer.fb_chunk_size,
+    );
+
+    let mut printer = Printer::new(configuration.printer.clone(), display, gcode);
 
     let runtime = build_runtime();
 
@@ -77,29 +78,6 @@ fn parse_cli() -> Args {
 }
 
 fn parse_config(config_file: String) -> Configuration {
-    configuration::Configuration::load(config_file)
+    Configuration::load(config_file)
         .expect("Config could not be parsed. See example odyssey.yaml for expected fields:")
-}
-
-fn build_printer(configuration: Configuration) -> Printer<Gcode> {
-    let serial = serialport::new(
-        configuration.printer.serial.clone(),
-        configuration.printer.baudrate,
-    );
-
-    let mut gcode = Gcode::new(configuration.clone(), serial);
-
-    gcode.add_print_variable("max_z".to_string(), configuration.printer.max_z.to_string());
-    gcode.add_print_variable(
-        "z_lift".to_string(),
-        configuration.printer.default_lift.to_string(),
-    );
-
-    let display: PrintDisplay = PrintDisplay::new(
-        configuration.printer.frame_buffer.clone(),
-        configuration.printer.fb_bit_depth,
-        configuration.printer.fb_chunk_size,
-    );
-
-    Printer::new(configuration.printer, display, gcode)
 }

@@ -5,7 +5,9 @@ use clap::Parser;
 use simple_logger::SimpleLogger;
 use tokio::runtime::{Builder, Runtime};
 
-use odyssey::{self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::{Printer}};
+use odyssey::{
+    self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::Printer,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -34,7 +36,7 @@ fn main() {
     log::info!("Starting Odyssey");
 
     let configuration = parse_config(args.config);
-    
+
     let serial = serialport::new(
         configuration.printer.serial.clone(),
         configuration.printer.baudrate,

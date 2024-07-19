@@ -27,6 +27,7 @@ use poem_openapi::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
+    fs,
     sync::{broadcast, mpsc, RwLock},
     time::interval,
 };
@@ -520,14 +521,31 @@ impl Api {
         Ok(Attachment::new(file_data.data).filename(file_data.name))
     }
 
-    #[oai(path = "/file", method = "post")]
+    #[oai(path = "/file", method = "delete")]
     async fn delete_file(
         &self,
-        Query(_file_path): Query<String>,
-        Query(_location): Query<Option<String>>,
-        Data(_configuration): Data<&ApiConfig>,
+        Query(file_path): Query<String>,
+        Query(location): Query<Option<LocationCategory>>,
+        Data(configuration): Data<&ApiConfig>,
     ) -> Result<Json<FileMetadata>> {
-        Err(NotImplemented(MethodNotAllowedError))
+        let location = location.unwrap_or(LocationCategory::Local);
+        log::info!("Deleting file {:?} in {:?}", file_path, location);
+
+        let full_file_path = Api::get_file_path(configuration, &file_path, &location)?;
+
+        let metadata = Api::_get_filedata(full_file_path.clone(), &location, configuration)?;
+
+        if full_file_path.is_dir() {
+            fs::remove_dir_all(full_file_path)
+                .await
+                .map_err(InternalServerError)?;
+        } else {
+            fs::remove_file(full_file_path)
+                .await
+                .map_err(InternalServerError)?;
+        }
+
+        Ok(Json(metadata))
     }
 }
 

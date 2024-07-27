@@ -35,7 +35,7 @@ use tokio::{
 use crate::{
     api_objects::{
         DisplayTest, FileMetadata, LocationCategory, PhysicalState, PrintMetadata, PrinterState,
-        PrinterStatus,
+        PrinterStatus, ThumbnailSize,
     },
     configuration::{ApiConfig, Configuration},
     printer::Operation,
@@ -504,9 +504,11 @@ impl Api {
         &self,
         Query(file_path): Query<String>,
         Query(location): Query<Option<LocationCategory>>,
+        Query(size): Query<Option<ThumbnailSize>>,
         Data(configuration): Data<&ApiConfig>,
     ) -> Result<Attachment<Vec<u8>>> {
         let location = location.unwrap_or(LocationCategory::Local);
+        let size = size.unwrap_or(ThumbnailSize::Small);
 
         log::info!("Getting thumbnail from {:?} in {:?}", file_path, location);
         let full_file_path = Api::get_file_path(configuration, &file_path, &location)?;
@@ -515,7 +517,7 @@ impl Api {
         log::info!("Extracting print thumbnail");
 
         let file_data = Sl1::from_file(file_metadata)
-            .get_thumbnail()
+            .get_thumbnail(size)
             .map_err(InternalServerError)?;
 
         Ok(Attachment::new(file_data.data).filename(file_data.name))

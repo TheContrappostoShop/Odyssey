@@ -11,12 +11,13 @@ use serde::Deserialize;
 use zip::ZipArchive;
 
 use crate::{
-    api_objects::{FileData, FileMetadata, PrintMetadata},
+    api_objects::{FileData, FileMetadata, PrintMetadata, ThumbnailSize},
     printfile::{Layer, PrintFile},
 };
 
 const CONFIG_FILE: &str = "config.ini";
-const THUMBNAIL_FILE: &str = "thumbnail/thumbnail400x400.png";
+const THUMBNAIL_SMALL: &str = "thumbnail/thumbnail400x400.png";
+const THUMBNAIL_LARGE: &str = "thumbnail/thumbnail800x480.png";
 
 /// PrintConfig object encompassing the fields stored in `config.ini` inside a `.sl1` file
 #[derive(Debug, Deserialize)]
@@ -152,8 +153,11 @@ impl PrintFile for Sl1 {
         self.metadata.clone()
     }
 
-    fn get_thumbnail(&mut self) -> Result<FileData, Error> {
-        let mut thumbnail_file = self.archive.by_name(THUMBNAIL_FILE)?;
+    fn get_thumbnail(&mut self, size: ThumbnailSize) -> Result<FileData, Error> {
+        let mut thumbnail_file = match size {
+            ThumbnailSize::Small => self.archive.by_name(THUMBNAIL_SMALL)?,
+            ThumbnailSize::Large => self.archive.by_name(THUMBNAIL_LARGE)?,
+        };
 
         let mut ret: Vec<u8> = Vec::new();
 

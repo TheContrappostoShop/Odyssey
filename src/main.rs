@@ -44,11 +44,7 @@ fn main() {
 
     let gcode = Gcode::new(configuration.clone(), serial);
 
-    let display: PrintDisplay = PrintDisplay::new(
-        configuration.printer.frame_buffer.clone(),
-        configuration.printer.fb_bit_depth,
-        configuration.printer.fb_chunk_size,
-    );
+    let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
 
     let mut printer = Printer::new(configuration.printer.clone(), display, gcode);
 

@@ -6,3 +6,4 @@ pub mod gcode;
 pub mod printer;
 pub mod printfile;
 pub mod sl1;
+mod wrapped_framebuffer;

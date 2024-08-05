@@ -14,7 +14,11 @@ use poem::{
     error::{
         BadRequest, GetDataError, InternalServerError, MethodNotAllowedError, NotImplemented,
         ServiceUnavailable, Unauthorized,
-    }, listener::TcpListener, middleware::Cors, web::Data, EndpointExt, Result, Route, Server
+    },
+    listener::TcpListener,
+    middleware::Cors,
+    web::Data,
+    EndpointExt, Result, Route, Server,
 };
 use poem_openapi::{
     param::Query,
@@ -605,7 +609,8 @@ pub async fn start_api(
         .data(operation_sender)
         .data(state_ref.clone())
         .data(full_config.clone())
-        .data(configuration.clone()).with(Cors::new());
+        .data(configuration.clone())
+        .with(Cors::new());
 
     Server::new(TcpListener::bind(addr))
         .run(app)

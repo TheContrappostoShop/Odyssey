@@ -6,4 +6,5 @@ pub mod gcode;
 pub mod printer;
 pub mod printfile;
 pub mod sl1;
+mod serial_handler;
 mod wrapped_framebuffer;

@@ -1,6 +1,7 @@
 use odyssey::{self, configuration::Configuration};
 use simple_logger::SimpleLogger;
 use tokio::runtime::{Builder, Runtime};
+use common;
 
 mod common;
 
@@ -20,11 +21,10 @@ fn build_runtime() -> Runtime {
         .build()
         .expect("Unable to start Tokio runtime")
 }
-/* 
-fn hardwareless_config() -> Configuration {
-    Configuration {
-        printer {
 
-        }
-    }
-}*/
+ 
+fn hardwareless_config() -> Configuration {
+    let mut default_config = common::default_test_configuration();
+
+    default_config.
+}

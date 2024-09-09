@@ -1,13 +1,15 @@
-use std::str::FromStr;
+use std::{io::{Read, Write}, str::FromStr};
 
 use clap::Parser;
 
+use serialport::SerialPort;
 use simple_logger::SimpleLogger;
 use tokio::runtime::{Builder, Runtime};
 
 use odyssey::{
     self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::Printer,
 };
+use tokio_serial::SerialPortBuilderExt;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -37,12 +39,20 @@ fn main() {
 
     let configuration = parse_config(args.config);
 
-    let serial = serialport::new(
+    let serial = tokio_serial::new(
         configuration.printer.serial.clone(),
         configuration.printer.baudrate,
-    );
+    ).open_native().expect("Unable to open serial port");
 
-    let gcode = Gcode::new(configuration.clone(), serial);
+    serial.set_exclusive(false)
+        .expect("Unable to set serial port exclusivity(false)");
+    serial.clear(ClearBuffer::All)
+        .expect("Unable to clear serialport buffers");
+
+    let serial_reader: Box<dyn Read> = Box::new(serial.try_clone_native().expect("Unable to clone serial port handler"));
+    let serial_writer: Box<dyn Write> = Box::new(serial.try_clone_native().expect("Unable to clone serial port handler"));
+
+    let gcode = Gcode::new(configuration.clone(), serial_reader, serial_writer);
 
     let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
 

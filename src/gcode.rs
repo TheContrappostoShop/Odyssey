@@ -18,10 +18,12 @@ pub struct Gcode {
     pub gcode_substitutions: HashMap<String, String>,
     pub serial_port: TTYPort,
     pub transceiver: (Sender<String>, Receiver<String>),
+    pub serial_receiver: Receiver<String>,
+    pub serial_sender: Sender<String>
 }
 
 impl Gcode {
-    pub fn new(config: Configuration, serial_builder: SerialPortBuilder) -> Gcode {
+    pub fn new(config: Configuration, serial_receiver: Receiver<String>, serial_sender: Sender<String>) -> Gcode {
         let transceiver = mpsc::channel(100);
         let mut port = serial_builder
             .open_native()

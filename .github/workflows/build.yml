@@ -31,8 +31,7 @@ jobs:
           cargo build --release --target armv7-unknown-linux-gnueabihf
           mkdir $BUILD_NAME
           mv target/armv7-unknown-linux-gnueabihf/release/odyssey $BUILD_NAME
-          cp default.yaml $BUILD_NAME
-          cp apiHelper.py $BUILD_NAME
+          cp resources/default.yaml $BUILD_NAME
           tar -czvf $BUILD_NAME.tar.gz -C $BUILD_NAME odyssey apiHelper.py default.yaml
       
       - name: upload armv7 artifact
@@ -47,8 +46,7 @@ jobs:
           cargo build --release --target aarch64-unknown-linux-gnu
           mkdir $BUILD_NAME
           mv target/aarch64-unknown-linux-gnu/release/odyssey $BUILD_NAME
-          cp default.yaml $BUILD_NAME
-          cp apiHelper.py $BUILD_NAME
+          cp resources/default.yaml $BUILD_NAME
           tar -czvf $BUILD_NAME.tar.gz -C $BUILD_NAME odyssey apiHelper.py default.yaml
       
       - name: upload aarch64 artifact
@@ -63,8 +61,7 @@ jobs:
           cargo build --release --target x86_64-unknown-linux-gnu
           mkdir $BUILD_NAME
           mv target/x86_64-unknown-linux-gnu/release/odyssey $BUILD_NAME
-          cp default.yaml $BUILD_NAME
-          cp apiHelper.py $BUILD_NAME
+          cp resources/default.yaml $BUILD_NAME
           tar -czvf $BUILD_NAME.tar.gz -C $BUILD_NAME odyssey apiHelper.py default.yaml
       
       - name: upload x86_64 artifact

@@ -30,15 +30,15 @@ fn no_hardware_mode() {
 
     let fifo_path = tmp_dir.path().join("emulatedFramebuffer");
 
-    nix::unistd::mkfifo(&fifo_path, nix::sys::stat::Mode::S_IRWXU).expect("Unable to create FIFO pipe");
+    nix::unistd::mkfifo(&fifo_path, nix::sys::stat::Mode::S_IRWXU)
+        .expect("Unable to create FIFO pipe");
 
     log::info!("Write frames to {}", fifo_path.display());
 
     let (serial_read_sender, serial_read_receiver) = broadcast::channel(200);
     let (serial_write_sender, serial_write_receiver) = broadcast::channel(200);
 
-    let configuration =
-        hardwareless_config(fifo_path.as_os_str().to_str().unwrap().to_owned());
+    let configuration = hardwareless_config(fifo_path.as_os_str().to_str().unwrap().to_owned());
 
     let gcode = Gcode::new(
         configuration.clone(),
@@ -49,11 +49,10 @@ fn no_hardware_mode() {
     let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
 
     let mut printer = Printer::new(configuration.printer.clone(), display, gcode);
-    
+
     let runtime = build_runtime();
 
     let handle = runtime.handle().clone();
-
 
     handle.block_on(async {
         let sender = printer.get_operation_sender().await.clone();
@@ -67,9 +66,11 @@ fn no_hardware_mode() {
 
         tokio::spawn(async move { printer.start_statemachine().await });
 
-        tokio::spawn(async move {api::start_api(configuration, sender, receiver).await});
+        tokio::spawn(async move { api::start_api(configuration, sender, receiver).await });
 
-        tokio::signal::ctrl_c().await.expect("failed to listen for event");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for event");
         tmp_dir.close().expect("Unable to remove tempdir");
         log::info!("Shutting down");
     });

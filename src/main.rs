@@ -1,24 +1,18 @@
 use std::str::FromStr;
 
 use clap::Parser;
-use configuration::Configuration;
 
-use display::PrintDisplay;
-use printer::HardwareControl;
+use serialport::{ClearBuffer, SerialPort};
 use simple_logger::SimpleLogger;
-use tokio::runtime::{Builder, Runtime};
+use tokio::{
+    runtime::{Builder, Runtime},
+    sync::broadcast,
+};
 
-use crate::{gcode::Gcode, printer::Printer};
-
-mod api;
-mod api_objects;
-mod configuration;
-mod display;
-mod gcode;
-mod printer;
-mod printfile;
-mod sl1;
-mod wrapped_framebuffer;
+use odyssey::{
+    self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::Printer,
+    serial_handler,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -48,13 +42,52 @@ fn main() {
 
     let configuration = parse_config(args.config);
 
-    let mut printer = build_printer(configuration.clone());
+    let mut serial = tokio_serial::new(
+        configuration.printer.serial.clone(),
+        configuration.printer.baudrate,
+    )
+    .open_native()
+    .expect("Unable to open serial port");
+
+    serial
+        .set_exclusive(false)
+        .expect("Unable to set serial port exclusivity(false)");
+    serial
+        .clear(ClearBuffer::All)
+        .expect("Unable to clear serialport buffers");
+
+    let (serial_read_sender, serial_read_receiver) = broadcast::channel(200);
+    let (serial_write_sender, serial_write_receiver) = broadcast::channel(200);
+
+    let gcode = Gcode::new(
+        configuration.clone(),
+        serial_read_receiver,
+        serial_write_sender,
+    );
+
+    let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
+
+    let mut printer = Printer::new(configuration.printer.clone(), display, gcode);
 
     let runtime = build_runtime();
 
     runtime.block_on(async {
         let sender = printer.get_operation_sender().await.clone();
         let receiver = printer.get_status_receiver().await;
+
+        let writer_serial = serial
+            .try_clone_native()
+            .expect("Unable to clone serial port handler");
+        let listener_serial = serial
+            .try_clone_native()
+            .expect("Unable to clone serial port handler");
+
+        tokio::spawn(async move {
+            serial_handler::run_listener(listener_serial, serial_read_sender).await
+        });
+        tokio::spawn(async move {
+            serial_handler::run_writer(writer_serial, serial_write_receiver).await
+        });
 
         tokio::spawn(async move { printer.start_statemachine().await });
 
@@ -78,25 +111,6 @@ fn parse_cli() -> Args {
 }
 
 fn parse_config(config_file: String) -> Configuration {
-    configuration::Configuration::load(config_file)
+    Configuration::load(config_file)
         .expect("Config could not be parsed. See example odyssey.yaml for expected fields:")
-}
-
-fn build_printer(configuration: Configuration) -> Printer<Gcode> {
-    let serial = serialport::new(
-        configuration.printer.serial.clone(),
-        configuration.printer.baudrate,
-    );
-
-    let mut gcode = Gcode::new(configuration.clone(), serial);
-
-    gcode.add_print_variable("max_z".to_string(), configuration.printer.max_z.to_string());
-    gcode.add_print_variable(
-        "z_lift".to_string(),
-        configuration.printer.default_lift.to_string(),
-    );
-
-    let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
-
-    Printer::new(configuration.printer, display, gcode)
 }

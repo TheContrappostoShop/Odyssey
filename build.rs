@@ -18,7 +18,10 @@ fn main() {
     )
     .unwrap();
     fs::copy(
-        Path::new(&cargo_dir).join(RESOURCES).join(SCRIPTS).join(API_HELPER_FILE),
+        Path::new(&cargo_dir)
+            .join(RESOURCES)
+            .join(SCRIPTS)
+            .join(API_HELPER_FILE),
         Path::new(&out_dir).join("../../..").join(API_HELPER_FILE),
     )
     .unwrap();

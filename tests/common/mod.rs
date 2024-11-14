@@ -1,7 +1,5 @@
 use odyssey::configuration::Configuration;
 
-
-
 pub static TEST_CONFIG: &str = "tests/resources/test.yaml";
 pub static CARGO_DIR: &str = env!("CARGO_MANIFEST_DIR");
 

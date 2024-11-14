@@ -1,15 +1,18 @@
-use std::{io::{Read, Write}, str::FromStr};
+use std::str::FromStr;
 
 use clap::Parser;
 
-use serialport::SerialPort;
+use serialport::{ClearBuffer, SerialPort};
 use simple_logger::SimpleLogger;
-use tokio::runtime::{Builder, Runtime};
+use tokio::{
+    runtime::{Builder, Runtime},
+    sync::broadcast,
+};
 
 use odyssey::{
     self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::Printer,
+    serial_handler,
 };
-use tokio_serial::SerialPortBuilderExt;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -39,20 +42,28 @@ fn main() {
 
     let configuration = parse_config(args.config);
 
-    let serial = tokio_serial::new(
+    let mut serial = tokio_serial::new(
         configuration.printer.serial.clone(),
         configuration.printer.baudrate,
-    ).open_native().expect("Unable to open serial port");
+    )
+    .open_native()
+    .expect("Unable to open serial port");
 
-    serial.set_exclusive(false)
+    serial
+        .set_exclusive(false)
         .expect("Unable to set serial port exclusivity(false)");
-    serial.clear(ClearBuffer::All)
+    serial
+        .clear(ClearBuffer::All)
         .expect("Unable to clear serialport buffers");
 
-    let serial_reader: Box<dyn Read> = Box::new(serial.try_clone_native().expect("Unable to clone serial port handler"));
-    let serial_writer: Box<dyn Write> = Box::new(serial.try_clone_native().expect("Unable to clone serial port handler"));
+    let (serial_read_sender, serial_read_receiver) = broadcast::channel(200);
+    let (serial_write_sender, serial_write_receiver) = broadcast::channel(200);
 
-    let gcode = Gcode::new(configuration.clone(), serial_reader, serial_writer);
+    let gcode = Gcode::new(
+        configuration.clone(),
+        serial_read_receiver,
+        serial_write_sender,
+    );
 
     let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
 
@@ -63,6 +74,20 @@ fn main() {
     runtime.block_on(async {
         let sender = printer.get_operation_sender().await.clone();
         let receiver = printer.get_status_receiver().await;
+
+        let writer_serial = serial
+            .try_clone_native()
+            .expect("Unable to clone serial port handler");
+        let listener_serial = serial
+            .try_clone_native()
+            .expect("Unable to clone serial port handler");
+
+        tokio::spawn(
+            async move { serial_handler::run_listener(listener_serial, serial_read_sender) },
+        );
+        tokio::spawn(
+            async move { serial_handler::run_writer(writer_serial, serial_write_receiver) },
+        );
 
         tokio::spawn(async move { printer.start_statemachine().await });
 

@@ -83,10 +83,10 @@ fn main() {
             .expect("Unable to clone serial port handler");
 
         tokio::spawn(
-            async move { serial_handler::run_listener(listener_serial, serial_read_sender) },
+            async move { serial_handler::run_listener(listener_serial, serial_read_sender).await },
         );
         tokio::spawn(
-            async move { serial_handler::run_writer(writer_serial, serial_write_receiver) },
+            async move { serial_handler::run_writer(writer_serial, serial_write_receiver).await },
         );
 
         tokio::spawn(async move { printer.start_statemachine().await });

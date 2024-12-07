@@ -1,5 +1,10 @@
 name: Build Odyssey
 
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+
 on:
   push:
   workflow_call:
@@ -72,6 +77,10 @@ jobs:
         with:
           name: odyssey_x86_64
           path: odyssey_x86_64/*
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "odyssey*.tar.gz"
 
       - uses: ncipollo/release-action@v1.14.0
         if: github.ref == 'refs/heads/main'

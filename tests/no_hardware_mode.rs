@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 mod common;
 
 /**
- * Run Odyssey without any hardware
+ * Run Odyssey without any hardware. This is a manual testing utility, not an automated test.
  */
 #[test]
 #[ignore]

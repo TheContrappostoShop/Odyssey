@@ -6,12 +6,18 @@ use serialport::{ClearBuffer, SerialPort};
 use simple_logger::SimpleLogger;
 use tokio::{
     runtime::{Builder, Runtime},
-    sync::broadcast,
+    sync::{broadcast, mpsc},
 };
 
 use odyssey::{
-    self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::Printer,
+    api,
+    api_objects::PrinterState,
+    configuration::Configuration,
+    display::PrintDisplay,
+    gcode::Gcode,
+    printer::{Operation, Printer},
     serial_handler,
+    shutdown_handler::ShutdownHandler,
 };
 
 #[derive(Parser, Debug)]
@@ -25,11 +31,7 @@ struct Args {
 }
 
 fn main() {
-    let default_panic = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        default_panic(info);
-        std::process::exit(1);
-    }));
+    let shutdown_handler = ShutdownHandler::new();
 
     let args = parse_cli();
 
@@ -67,13 +69,14 @@ fn main() {
 
     let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
 
-    let mut printer = Printer::new(configuration.printer.clone(), display, gcode);
+    let operation_channel = mpsc::channel::<Operation>(100);
+    let status_channel = broadcast::channel::<PrinterState>(100);
 
     let runtime = build_runtime();
 
     runtime.block_on(async {
-        let sender = printer.get_operation_sender().await.clone();
-        let receiver = printer.get_status_receiver().await;
+        let sender = operation_channel.0.clone();
+        let receiver = status_channel.1.resubscribe();
 
         let writer_serial = serial
             .try_clone_native()
@@ -82,16 +85,40 @@ fn main() {
             .try_clone_native()
             .expect("Unable to clone serial port handler");
 
-        tokio::spawn(async move {
-            serial_handler::run_listener(listener_serial, serial_read_sender).await
-        });
-        tokio::spawn(async move {
-            serial_handler::run_writer(writer_serial, serial_write_receiver).await
-        });
+        let serial_read_handle = tokio::spawn(serial_handler::run_listener(
+            listener_serial,
+            serial_read_sender,
+            shutdown_handler.cancellation_token.clone(),
+        ));
 
-        tokio::spawn(async move { printer.start_statemachine().await });
+        let serial_write_handle = tokio::spawn(serial_handler::run_writer(
+            writer_serial,
+            serial_write_receiver,
+            shutdown_handler.cancellation_token.clone(),
+        ));
 
-        api::start_api(configuration, sender, receiver).await;
+        let statemachine_handle = tokio::spawn(Printer::start_printer(
+            configuration.printer.clone(),
+            display,
+            gcode,
+            operation_channel.1,
+            status_channel.0.clone(),
+            shutdown_handler.cancellation_token.clone(),
+        ));
+
+        let api_handle = tokio::spawn(api::start_api(
+            configuration,
+            sender,
+            receiver,
+            shutdown_handler.cancellation_token.clone(),
+        ));
+
+        shutdown_handler.until_shutdown().await;
+
+        let _ = serial_read_handle.await;
+        let _ = serial_write_handle.await;
+        let _ = statemachine_handle.await;
+        let _ = api_handle.await;
     });
 }
 
@@ -111,6 +138,6 @@ fn parse_cli() -> Args {
 }
 
 fn parse_config(config_file: String) -> Configuration {
-    Configuration::load(config_file)
+    Configuration::from_file(config_file)
         .expect("Config could not be parsed. See example odyssey.yaml for expected fields:")
 }

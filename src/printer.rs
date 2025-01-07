@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
+use tokio_util::sync::CancellationToken;
 
 use crate::api_objects::DisplayTest;
 use crate::api_objects::FileMetadata;
@@ -20,24 +21,24 @@ pub struct Printer<T: HardwareControl> {
     pub display: PrintDisplay,
     pub hardware_controller: T,
     pub state: PrinterState,
-    pub operation_channel: (mpsc::Sender<Operation>, mpsc::Receiver<Operation>),
-    pub status_channel: (
-        broadcast::Sender<PrinterState>,
-        broadcast::Receiver<PrinterState>,
-    ),
+    pub operation_receiver: mpsc::Receiver<Operation>,
+    pub status_sender: broadcast::Sender<PrinterState>,
 }
 
 impl<T: HardwareControl> Printer<T> {
-    pub fn new(
+    pub async fn start_printer(
         config: PrinterConfig,
         display: PrintDisplay,
         mut hardware_controller: T,
-    ) -> Printer<T> {
+        operation_receiver: mpsc::Receiver<Operation>,
+        status_sender: broadcast::Sender<PrinterState>,
+        cancellation_token: CancellationToken,
+    ) {
         hardware_controller.add_print_variable("max_z".to_string(), config.max_z.to_string());
         hardware_controller
             .add_print_variable("z_lift".to_string(), config.default_lift.to_string());
 
-        Printer {
+        let mut printer = Printer {
             config,
             display,
             hardware_controller,
@@ -52,9 +53,11 @@ impl<T: HardwareControl> Printer<T> {
                 },
                 status: PrinterStatus::Shutdown,
             },
-            operation_channel: mpsc::channel(100),
-            status_channel: broadcast::channel(100),
-        }
+            operation_receiver,
+            status_sender,
+        };
+
+        printer.start_statemachine(cancellation_token).await
     }
 
     pub async fn print_event_loop(&mut self) {
@@ -384,7 +387,7 @@ impl<T: HardwareControl> Printer<T> {
             return;
         }*/
 
-        let mut op_result = self.operation_channel.1.try_recv();
+        let mut op_result = self.operation_receiver.try_recv();
 
         while let Ok(operation) = op_result {
             match operation {
@@ -398,7 +401,7 @@ impl<T: HardwareControl> Printer<T> {
                 }
                 _ => (),
             };
-            op_result = self.operation_channel.1.try_recv();
+            op_result = self.operation_receiver.try_recv();
         }
     }
 
@@ -443,25 +446,29 @@ impl<T: HardwareControl> Printer<T> {
         }
     }
 
-    pub async fn get_operation_sender(&mut self) -> mpsc::Sender<Operation> {
-        self.operation_channel.0.clone()
-    }
+    /*
+       pub async fn get_operation_sender(&mut self) -> mpsc::Sender<Operation> {
+           self.operation_channel.0.clone()
+       }
 
-    pub async fn get_status_receiver(&mut self) -> broadcast::Receiver<PrinterState> {
-        self.status_channel.0.subscribe()
-    }
+       pub async fn get_status_receiver(&mut self) -> broadcast::Receiver<PrinterState> {
+           self.status_channel.0.subscribe()
+       }
+    */
 
     async fn send_status(&mut self) {
-        self.status_channel
-            .0
+        self.status_sender
             .send(self.state.clone())
             .expect("Failed to send state update");
     }
 
-    pub async fn start_statemachine(&mut self) {
+    pub async fn start_statemachine(&mut self, cancellation_token: CancellationToken) {
         self.hardware_controller.initialize().await;
 
         loop {
+            if cancellation_token.is_cancelled() {
+                break;
+            }
             match self.state.status {
                 PrinterStatus::Idle => self.idle_event_loop().await,
                 PrinterStatus::Printing => self.print_event_loop().await,
@@ -491,13 +498,13 @@ impl<T: HardwareControl> Printer<T> {
 
     // While in shutdown state, process operations to drop them from queue
     async fn shutdown_operation_handler(&mut self) {
-        let mut op_result = self.operation_channel.1.try_recv();
+        let mut op_result = self.operation_receiver.try_recv();
 
         while let Ok(operation) = op_result {
             if let Operation::QueryState = operation {
                 self.send_status().await
             }
-            op_result = self.operation_channel.1.try_recv();
+            op_result = self.operation_receiver.try_recv();
         }
     }
 
@@ -519,7 +526,7 @@ impl<T: HardwareControl> Printer<T> {
             return;
         }*/
 
-        let mut op_result = self.operation_channel.1.try_recv();
+        let mut op_result = self.operation_receiver.try_recv();
 
         while let Ok(operation) = op_result {
             match operation {
@@ -546,7 +553,7 @@ impl<T: HardwareControl> Printer<T> {
                 Operation::Shutdown => self.shutdown().await,
                 _ => (),
             };
-            op_result = self.operation_channel.1.try_recv();
+            op_result = self.operation_receiver.try_recv();
         }
     }
 

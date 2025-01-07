@@ -1,14 +1,25 @@
 use std::time::Duration;
 
+use log::info;
 use odyssey::{
-    self, api, configuration::Configuration, display::PrintDisplay, gcode::Gcode, printer::Printer,
+    api,
+    api_objects::PrinterState,
+    configuration::Configuration,
+    display::PrintDisplay,
+    gcode::Gcode,
+    printer::{Operation, Printer},
+    shutdown_handler::ShutdownHandler,
 };
 use simple_logger::SimpleLogger;
 use tokio::{
     runtime::{Builder, Runtime},
-    sync::broadcast::{self, Receiver, Sender},
+    sync::{
+        broadcast::{self, Receiver, Sender},
+        mpsc,
+    },
     time::interval,
 };
+use tokio_util::sync::CancellationToken;
 
 mod common;
 
@@ -18,27 +29,25 @@ mod common;
 #[test]
 #[ignore]
 fn no_hardware_mode() {
+    let shutdown_handler = ShutdownHandler::new();
+
     SimpleLogger::new()
         .with_level(log::LevelFilter::Debug)
         .init()
         .unwrap();
 
-    let tmp_dir = tempfile::Builder::new()
+    let tmp_file = tempfile::Builder::new()
         .prefix("odysseyTest")
-        .tempdir()
-        .unwrap();
+        .tempfile()
+        .expect("Unable to make temporary file");
 
-    let fifo_path = tmp_dir.path().join("emulatedFramebuffer");
-
-    nix::unistd::mkfifo(&fifo_path, nix::sys::stat::Mode::S_IRWXU)
-        .expect("Unable to create FIFO pipe");
-
-    log::info!("Write frames to {}", fifo_path.display());
+    log::info!("Write frames to {}", tmp_file.path().display());
 
     let (serial_read_sender, serial_read_receiver) = broadcast::channel(200);
     let (serial_write_sender, serial_write_receiver) = broadcast::channel(200);
 
-    let configuration = hardwareless_config(fifo_path.as_os_str().to_str().unwrap().to_owned());
+    let configuration =
+        hardwareless_config(tmp_file.path().as_os_str().to_str().unwrap().to_owned());
 
     let gcode = Gcode::new(
         configuration.clone(),
@@ -48,55 +57,79 @@ fn no_hardware_mode() {
 
     let display: PrintDisplay = PrintDisplay::new(configuration.display.clone());
 
-    let mut printer = Printer::new(configuration.printer.clone(), display, gcode);
+    let operation_channel = mpsc::channel::<Operation>(100);
+    let status_channel = broadcast::channel::<PrinterState>(100);
 
     let runtime = build_runtime();
 
-    let handle = runtime.handle().clone();
+    runtime.block_on(async {
+        let sender = operation_channel.0.clone();
+        let receiver = status_channel.1.resubscribe();
 
-    handle.block_on(async {
-        let sender = printer.get_operation_sender().await.clone();
-        let receiver = printer.get_status_receiver().await;
-
-        tokio::spawn(serial_feedback_loop(
+        let serial_handle = tokio::spawn(serial_feedback_loop(
             configuration.clone(),
             serial_read_sender,
             serial_write_receiver,
+            shutdown_handler.cancellation_token.clone(),
         ));
 
-        tokio::spawn(async move { printer.start_statemachine().await });
+        let statemachine_handle = tokio::spawn(Printer::start_printer(
+            configuration.printer.clone(),
+            display,
+            gcode,
+            operation_channel.1,
+            status_channel.0.clone(),
+            shutdown_handler.cancellation_token.clone(),
+        ));
 
-        tokio::spawn(async move { api::start_api(configuration, sender, receiver).await });
+        let api_handle = tokio::spawn(api::start_api(
+            configuration,
+            sender,
+            receiver,
+            shutdown_handler.cancellation_token.clone(),
+        ));
 
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to listen for event");
-        tmp_dir.close().expect("Unable to remove tempdir");
+        shutdown_handler.until_shutdown().await;
+
+        let _ = serial_handle.await;
+        let _ = statemachine_handle.await;
+        let _ = api_handle.await;
+
+        tmp_file.close().expect("Unable to remove tempdir");
         log::info!("Shutting down");
     });
+
+    runtime.shutdown_background();
 }
 
 pub async fn serial_feedback_loop(
     configuration: Configuration,
     sender: Sender<String>,
     mut receiver: Receiver<String>,
+    cancellation_token: CancellationToken,
 ) {
     let mut interval = interval(Duration::from_millis(100));
 
     loop {
+        if cancellation_token.is_cancelled() {
+            break;
+        }
         interval.tick().await;
         match receiver.try_recv() {
             Ok(command) => {
+                log::info!("{}", command);
+
+                let response: String;
+                if command.as_str().trim() == configuration.gcode.status_check.as_str().trim() {
+                    response = configuration.gcode.status_desired.clone();
+                } else {
+                    response = configuration.gcode.move_sync.clone();
+                };
+
+                log::info!("command='{}', response='{}'", command.trim(), response);
+
                 sender
-                    .send(
-                        if command.as_str().trim()
-                            == configuration.gcode.status_check.as_str().trim()
-                        {
-                            configuration.gcode.status_desired.clone()
-                        } else {
-                            configuration.gcode.move_sync.clone()
-                        },
-                    )
+                    .send(response)
                     .expect("Unable to send gcode response message");
             }
             Err(err) => match err {

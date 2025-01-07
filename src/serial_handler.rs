@@ -2,8 +2,13 @@ use serialport::TTYPort;
 use std::io::{self, BufRead, BufReader, Write};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::time::{interval, Duration};
+use tokio_util::sync::CancellationToken;
 
-pub async fn run_listener(serial_port: TTYPort, sender: Sender<String>) {
+pub async fn run_listener(
+    serial_port: TTYPort,
+    sender: Sender<String>,
+    cancellation_token: CancellationToken,
+) {
     let mut buf_reader = BufReader::new(
         serial_port
             .try_clone_native()
@@ -12,6 +17,9 @@ pub async fn run_listener(serial_port: TTYPort, sender: Sender<String>) {
     let mut interval = interval(Duration::from_millis(100));
 
     loop {
+        if cancellation_token.is_cancelled() {
+            break;
+        }
         interval.tick().await;
         let mut read_string = String::new();
         match buf_reader.read_line(&mut read_string) {
@@ -34,10 +42,17 @@ pub async fn run_listener(serial_port: TTYPort, sender: Sender<String>) {
     }
 }
 
-pub async fn run_writer(mut serial_port: TTYPort, mut receiver: Receiver<String>) {
+pub async fn run_writer(
+    mut serial_port: TTYPort,
+    mut receiver: Receiver<String>,
+    cancellation_token: CancellationToken,
+) {
     let mut interval = interval(Duration::from_millis(100));
 
     loop {
+        if cancellation_token.is_cancelled() {
+            break;
+        }
         interval.tick().await;
 
         match receiver.recv().await {

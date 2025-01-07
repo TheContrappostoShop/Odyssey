@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use log::info;
 use odyssey::{
     api,
     api_objects::PrinterState,

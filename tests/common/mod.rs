@@ -1,5 +1,6 @@
 use odyssey::configuration::{ApiConfig, Configuration, DisplayConfig, GcodeConfig, PrinterConfig};
 
+#[allow(unused_variables)]
 pub static TEST_RESOURCE_DIR: &str = "tests/resources";
 pub static UPLOAD_DIR: &str = "uploads";
 pub static CARGO_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -46,6 +47,7 @@ pub fn default_test_configuration() -> Configuration {
     }
 }
 
+#[allow(dead_code)]
 pub fn test_resource_path(resource_file: String) -> String {
     format!("{CARGO_DIR}/{TEST_RESOURCE_DIR}/{resource_file}")
 }

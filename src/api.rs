@@ -16,6 +16,7 @@ use poem::{
         ServiceUnavailable, Unauthorized,
     },
     listener::TcpListener,
+    middleware::Cors,
     web::Data,
     EndpointExt, Result, Route, Server,
 };
@@ -610,7 +611,8 @@ pub async fn start_api(
         .data(operation_sender)
         .data(state_ref.clone())
         .data(full_config.clone())
-        .data(configuration.clone());
+        .data(configuration.clone())
+        .with(Cors::new());
 
     Server::new(TcpListener::bind(addr))
         .run_with_graceful_shutdown(

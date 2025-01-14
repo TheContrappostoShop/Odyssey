@@ -2,7 +2,7 @@
 import glob
 import pygame
 
-fifo_path = glob.glob("/tmp/odysseyTest*/emulatedFramebuffer")[0]
+fifo_path = glob.glob("/tmp/odysseyTest*")[0]
 mode = 0o600
 
 real_bit_depth=[5,6,5]

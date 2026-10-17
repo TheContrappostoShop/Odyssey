@@ -166,7 +166,7 @@ pub struct KlipperUDS {
     pub config: KlipperUDSConfig,
     variable_substitutions: Arc<RwLock<HashMap<String, String>>>,
     param_watch_paths: Arc<RwLock<HashMap<String, String>>>,
-    uds_stream: Option<Arc<UnixStream>>,
+    uds_stream: Arc<RwLock<Option<UnixStream>>>,
     response_send_channels: Arc<RwLock<HashMap<String, oneshot::Sender<Value>>>>,
     state_sender: watch::Sender<HardwareState>,
     pub state_receiver: watch::Receiver<HardwareState>,
@@ -194,25 +194,25 @@ impl KlipperUDS {
                 (POSITION_SOURCE.to_string(), POSITION_JSON_PATH.to_string()),
                 (CURING_SOURCE.to_string(), CURING_JSON_PATH.to_string()),
             ]))),
-            uds_stream: uds_stream.map(Arc::new),
+            uds_stream: Arc::new(RwLock::new(uds_stream)),
             response_send_channels: Arc::new(RwLock::new(HashMap::new())),
             state_sender,
             state_receiver,
         }
     }
 
-    pub fn get_uds(&self) -> Result<Arc<UnixStream>, io::Error> {
-        self.uds_stream.clone().ok_or(io::Error::new(
+    pub async fn get_uds(&self) -> Result<UnixStream, io::Error> {
+        self.uds_stream.read().await.ok_or(io::Error::new(
             io::ErrorKind::NotConnected,
             "Not Connected to UDS",
         ))
+
     }
 
     #[instrument(skip_all, level = "debug", ret)]
     pub async fn connect_uds(&mut self) -> Result<(), io::Error> {
-        self.uds_stream = Some(Arc::new(
-            UnixStream::connect(self.config.connection_path.clone()).await?,
-        ));
+
+        self.uds_stream.write().await.replace(UnixStream::connect(self.config.connection_path.clone()).await?);
         Ok(())
     }
 
@@ -224,7 +224,7 @@ impl KlipperUDS {
             loop {
                 self.get_uds()?.writable().await?;
 
-                match self.get_uds()?.try_write(&request_bytes) {
+                match self.uds_stream.read().await?.try_write(&request_bytes) {
                     Ok(n) => {
                         tracing::debug!("wrote {} bytes to Klipper:\n{:#?}", n, request);
                         return Ok(());
@@ -357,12 +357,16 @@ impl KlipperUDS {
         }
         Ok(())
     }
+
+    async fn run_uds_reader(&self) {
+        
+    }
 }
 
 #[async_trait]
 impl HardwareControl for KlipperUDS {
     #[instrument(skip_all, level = "debug", ret)]
-    async fn is_ready(&mut self) -> Result<bool, OdysseyError> {
+    async fn is_ready(&self) -> Result<bool, OdysseyError> {
         Ok(!matches!(
             self.get_hardware_state_receiver().borrow().status,
             HardwareStatusEnum::Startup
@@ -370,10 +374,8 @@ impl HardwareControl for KlipperUDS {
     }
 
     #[instrument(skip_all, level = "debug", ret)]
-    async fn initialize(&mut self) -> Result<(), OdysseyError> {
-        if self.uds_stream.is_none() {
-            self.connect_uds().await?;
-        }
+    async fn initialize(&self) -> Result<(), OdysseyError> {
+
 
         self.send_request(&KlipperRequest::objects_subscribe(
             KLIPPER_STATE_SOURCE,
@@ -398,7 +400,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(())
     }
-    async fn home(&mut self) -> Result<HardwareState, OdysseyError> {
+    async fn home(&self) -> Result<HardwareState, OdysseyError> {
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
             &self.parse_gcode(&self.config.home_command).await?,
@@ -409,7 +411,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(self.get_hardware_state())
     }
-    async fn manual_command(&mut self, command: String) -> Result<String, OdysseyError> {
+    async fn manual_command(&self, command: String) -> Result<String, OdysseyError> {
         Ok(self
             .send_request_with_response(&KlipperRequest::gcode_script(
                 &self.get_new_uuid(),
@@ -420,7 +422,7 @@ impl HardwareControl for KlipperUDS {
             .unwrap()?
             .to_string())
     }
-    async fn start_print(&mut self) -> Result<HardwareState, OdysseyError> {
+    async fn start_print(&self) -> Result<HardwareState, OdysseyError> {
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
             &self.parse_gcode(&self.config.print_start).await?,
@@ -431,7 +433,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(self.get_hardware_state())
     }
-    async fn end_print(&mut self) -> Result<HardwareState, OdysseyError> {
+    async fn end_print(&self) -> Result<HardwareState, OdysseyError> {
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
             &self.parse_gcode(&self.config.print_end).await?,
@@ -443,7 +445,7 @@ impl HardwareControl for KlipperUDS {
         Ok(self.get_hardware_state())
     }
     async fn move_z(
-        &mut self,
+        &self,
         z_microns: u32,
         speed: f64,
         manual: bool,
@@ -472,7 +474,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(self.get_hardware_state())
     }
-    async fn start_layer(&mut self, layer: usize) -> Result<HardwareState, OdysseyError> {
+    async fn start_layer(&self, layer: usize) -> Result<HardwareState, OdysseyError> {
         self.add_state_variable("layer", layer.to_string()).await;
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
@@ -484,7 +486,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(self.get_hardware_state())
     }
-    async fn start_curing(&mut self) -> Result<HardwareState, OdysseyError> {
+    async fn start_curing(&self) -> Result<HardwareState, OdysseyError> {
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
             &self.parse_gcode(&self.config.cure_start).await?,
@@ -495,7 +497,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(self.get_hardware_state())
     }
-    async fn stop_curing(&mut self) -> Result<HardwareState, OdysseyError> {
+    async fn stop_curing(&self) -> Result<HardwareState, OdysseyError> {
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
             &self.parse_gcode(&self.config.cure_end).await?,
@@ -506,7 +508,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(self.get_hardware_state())
     }
-    async fn boot(&mut self) -> Result<HardwareState, OdysseyError> {
+    async fn boot(&self) -> Result<HardwareState, OdysseyError> {
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
             &self.parse_gcode(&self.config.boot).await?,
@@ -517,7 +519,7 @@ impl HardwareControl for KlipperUDS {
 
         Ok(self.get_hardware_state())
     }
-    async fn shutdown(&mut self) -> Result<(), OdysseyError> {
+    async fn shutdown(&self) -> Result<(), OdysseyError> {
         self.send_request_with_response(&KlipperRequest::gcode_script(
             &self.get_new_uuid(),
             &self.parse_gcode(&self.config.shutdown).await?,
@@ -533,16 +535,16 @@ impl HardwareControl for KlipperUDS {
     fn get_hardware_state_receiver(&self) -> watch::Receiver<HardwareState> {
         self.state_receiver.clone()
     }
-    async fn add_state_variable(&mut self, variable: &str, value: String) {
+    async fn add_state_variable(&self, variable: &str, value: String) {
         self.variable_substitutions
             .write()
             .await
             .insert(variable.to_string(), value);
     }
-    async fn remove_state_variable(&mut self, variable: &str) {
+    async fn remove_state_variable(&self, variable: &str) {
         self.variable_substitutions.write().await.remove(variable);
     }
-    async fn clear_state_variables(&mut self) {
+    async fn clear_state_variables(&self) {
         self.variable_substitutions.write().await.clear();
     }
     async fn run(mut self, cancellation_token: CancellationToken) -> Result<(), OdysseyError> {
@@ -557,9 +559,14 @@ impl HardwareControl for KlipperUDS {
                 return self.shutdown().await;
             }
 
-            // Initialize UDS connection and Klipper subscriptions
+
             if !init {
+                // Initialize UDS connection
+                cancellation_token.run_until_cancelled(self.connect_uds()).await;
+
+                // Register Klipper subscriptions
                 self.initialize().await?;
+                
                 init = true;
             }
 
@@ -571,7 +578,6 @@ impl HardwareControl for KlipperUDS {
                 Ok(0) => {
                     tracing::info!("Read 0 bytes from Klipper, indicating a closed connection.");
                     init = false;
-                    self.uds_stream = None;
                     continue;
                 }
                 Ok(n) => {

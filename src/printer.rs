@@ -29,7 +29,7 @@ pub struct Printer<T: HardwareControl> {
     pub state_receiver: watch::Receiver<PrinterState>,
 }
 
-impl<T: HardwareControl> Printer<T> {
+impl<T: HardwareControl + 'static> Printer<T> {
     pub fn new(
         full_config: Arc<Configuration>,
         display: PrintDisplay,
@@ -58,7 +58,12 @@ impl<T: HardwareControl> Printer<T> {
             .add_state_variable("z_lift", self.full_config.printer.default_lift.to_string())
             .await;
 
-        self.start_statemachine().await
+        let hardware_handle = tokio::spawn(self.hardware_controller.run(self.cancellation_token.clone()));
+
+        let state_result = self.start_statemachine().await;
+
+        hardware_handle.await;
+        state_result
     }
 
     pub async fn print_event_loop(&mut self) -> Result<(), OdysseyError> {

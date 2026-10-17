@@ -40,11 +40,7 @@ pub async fn run_odyssey(
 
     let operation_sender = operation_channel.0.clone();
 
-    let klipper_uds_handle = task::spawn(
-        klipper_uds
-            .clone()
-            .run(shutdown_handler.cancellation_token.clone()),
-    );
+   
 
     let printer = Printer::new(
         configuration.clone(),
@@ -67,7 +63,6 @@ pub async fn run_odyssey(
     shutdown_handler.until_shutdown().await;
     tracing::info!("Shutting down Odyssey");
 
-    let _ = klipper_uds_handle.await;
     let _ = statemachine_handle.await;
     let _ = api_handle.await;
 }
